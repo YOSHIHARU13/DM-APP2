@@ -1,3 +1,21 @@
+// DeckList.tsxの先頭に追加してテスト
+useEffect(() => {
+  const testFirestore = async () => {
+    try {
+      console.log('Firestore接続テスト開始');
+      const testDoc = await addDoc(collection(db, 'test'), {
+        message: 'Hello Firestore',
+        timestamp: new Date()
+      });
+      console.log('Firestore接続成功:', testDoc.id);
+    } catch (error) {
+      console.error('Firestore接続エラー:', error);
+    }
+  };
+  
+  testFirestore();
+}, []);
+
 import React, { useState, useEffect } from 'react';
 import {
   collection,
