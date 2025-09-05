@@ -40,13 +40,15 @@ export interface Deck {
   projectId: string;
 }
 
-// 対戦結果の型
+// Battle型を更新
 export interface Battle {
   id: string;
   deck1Id: string;
   deck2Id: string;
   deck1Wins: number;
   deck2Wins: number;
+  deck1GoingFirst: number;  // デッキ1が先攻した回数
+  deck2GoingFirst: number;  // デッキ2が先攻した回数
   memo: string;
   date: Date;
   projectId: string;
