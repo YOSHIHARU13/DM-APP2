@@ -1,21 +1,3 @@
-// DeckList.tsxの先頭に追加してテスト
-useEffect(() => {
-  const testFirestore = async () => {
-    try {
-      console.log('Firestore接続テスト開始');
-      const testDoc = await addDoc(collection(db, 'test'), {
-        message: 'Hello Firestore',
-        timestamp: new Date()
-      });
-      console.log('Firestore接続成功:', testDoc.id);
-    } catch (error) {
-      console.error('Firestore接続エラー:', error);
-    }
-  };
-  
-  testFirestore();
-}, []);
-
 import React, { useState, useEffect } from 'react';
 import {
   collection,
@@ -98,18 +80,46 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
             date = new Date();
           }
 
-          loadedBattles.push({
-            id: docSnap.id,
-            deck1Id: data.deck1Id ?? '',
-            deck2Id: data.deck2Id ?? '',
-            deck1Wins: data.deck1Wins ?? 0,
-            deck2Wins: data.deck2Wins ?? 0,
-            deck1GoingFirst: data.deck1GoingFirst ?? 0,
-            deck2GoingFirst: data.deck2GoingFirst ?? 0,
-            memo: data.memo ?? '',
-            date,
-            projectId: data.projectId ?? ''
-          });
+          // 新旧データ形式の互換性を保つ
+          if (data.deck1Wins !== undefined && data.deck2Wins !== undefined) {
+            // 古いデータ形式：集計データを個別戦績に展開
+            const deck1GoingFirst = data.deck1GoingFirst || 0;
+            const deck2GoingFirst = data.deck2GoingFirst || 0;
+            const totalGames = data.deck1Wins + data.deck2Wins;
+            
+            // 先攻率を基に個別戦績を推定生成
+            for (let i = 0; i < totalGames; i++) {
+              const isDeck1Win = i < data.deck1Wins;
+              const isDeck1GoingFirst = i < deck1GoingFirst;
+              
+              loadedBattles.push({
+                id: `${docSnap.id}_game_${i}`,
+                deck1Id: data.deck1Id ?? '',
+                deck2Id: data.deck2Id ?? '',
+                deck1Wins: isDeck1Win ? 1 : 0,
+                deck2Wins: isDeck1Win ? 0 : 1,
+                deck1GoingFirst: isDeck1GoingFirst ? 1 : 0,
+                deck2GoingFirst: isDeck1GoingFirst ? 0 : 1,
+                memo: data.memo ?? '',
+                date: new Date(date.getTime() + i * 1000), // 少しずつ時間をずらす
+                projectId: data.projectId ?? ''
+              });
+            }
+          } else {
+            // 新しいデータ形式：1戦ずつのデータ
+            loadedBattles.push({
+              id: docSnap.id,
+              deck1Id: data.deck1Id ?? '',
+              deck2Id: data.deck2Id ?? '',
+              deck1Wins: data.deck1Wins ?? 0,
+              deck2Wins: data.deck2Wins ?? 0,
+              deck1GoingFirst: data.deck1GoingFirst ?? 0,
+              deck2GoingFirst: data.deck2GoingFirst ?? 0,
+              memo: data.memo ?? '',
+              date,
+              projectId: data.projectId ?? ''
+            });
+          }
         });
 
         setDecks(loadedDecks);
@@ -164,7 +174,9 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
         // 関連する対戦データを削除
         const relatedBattles = battles.filter(b => b.deck1Id === deckId || b.deck2Id === deckId);
         relatedBattles.forEach(battle => {
-          batch.delete(doc(db, 'battles', battle.id));
+          if (!battle.id.includes('_game_')) { // 元のドキュメントのみ削除
+            batch.delete(doc(db, 'battles', battle.id));
+          }
         });
 
         await batch.commit();
@@ -181,16 +193,17 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
     }
   };
 
-  // 対戦追加
+  // 対戦追加（1戦ずつ）
   const handleBattleAdd = async (newBattle: Battle) => {
     try {
+      // 1戦ずつのデータとして保存
       const battleData = {
         deck1Id: newBattle.deck1Id,
         deck2Id: newBattle.deck2Id,
-        deck1Wins: newBattle.deck1Wins,
-        deck2Wins: newBattle.deck2Wins,
-        deck1GoingFirst: newBattle.deck1GoingFirst,
-        deck2GoingFirst: newBattle.deck2GoingFirst,
+        deck1Wins: newBattle.deck1Wins, // 1 or 0
+        deck2Wins: newBattle.deck2Wins, // 1 or 0
+        deck1GoingFirst: newBattle.deck1GoingFirst, // 1 or 0
+        deck2GoingFirst: newBattle.deck2GoingFirst, // 1 or 0
         memo: newBattle.memo,
         date: newBattle.date,
         projectId: newBattle.projectId
@@ -213,7 +226,7 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
     }
   };
 
-  // 勝率計算（先攻後攻統計付き）
+  // 勝率計算（正確な先攻後攻統計）
   const getDeckWinRate = (deckId: string) => {
     const deckBattles = battles.filter(b => b.deck1Id === deckId || b.deck2Id === deckId);
     if (deckBattles.length === 0) return {
@@ -240,24 +253,18 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
       const opponentId = isPlayer1 ? battle.deck2Id : battle.deck1Id;
       const myWins = isPlayer1 ? battle.deck1Wins : battle.deck2Wins;
       const myLosses = isPlayer1 ? battle.deck2Wins : battle.deck1Wins;
-
-      // 古いデータ対応：先攻情報がない場合は0として扱う
-      const myGoingFirst = isPlayer1 ? (battle.deck1GoingFirst || 0) : (battle.deck2GoingFirst || 0);
-      const myGoingSecond = isPlayer1 ? (battle.deck2GoingFirst || 0) : (battle.deck1GoingFirst || 0);
+      const myGoingFirst = isPlayer1 ? battle.deck1GoingFirst : battle.deck2GoingFirst;
 
       wins += myWins;
       losses += myLosses;
 
-      // 先攻後攻の統計（データがある場合のみ）
-      if (battle.deck1GoingFirst !== undefined && battle.deck2GoingFirst !== undefined) {
-        goingFirstGames += myGoingFirst;
-        goingSecondGames += myGoingSecond;
-
-        if (myGoingFirst + myGoingSecond > 0) {
-          const myGoingFirstRate = myGoingFirst / (myGoingFirst + myGoingSecond);
-          goingFirstWins += Math.round(myWins * myGoingFirstRate);
-          goingSecondWins += myWins - Math.round(myWins * myGoingFirstRate);
-        }
+      // 先攻後攻の正確な統計
+      if (myGoingFirst === 1) {
+        goingFirstGames++;
+        goingFirstWins += myWins;
+      } else {
+        goingSecondGames++;
+        goingSecondWins += myWins;
       }
 
       // 対戦相手別統計
