@@ -241,21 +241,105 @@ const getDeckWinRate = (deckId: string) => {
 };
   
   // ソート機能
-  const getSortedDecks = () => {
-    const sortedDecks = [...decks];
-    
-    switch (sortBy) {
-      case 'winRate':
-        return sortedDecks.sort((a, b) => getDeckWinRate(b.id).winRate - getDeckWinRate(a.id).winRate);
-      case 'normalizedWinRate':
-        return sortedDecks.sort((a, b) => getDeckWinRate(b.id).normalizedWinRate - getDeckWinRate(a.id).normalizedWinRate);
-      case 'created':
-        return sortedDecks.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-      case 'name':
-      default:
-        return sortedDecks.sort((a, b) => a.name.localeCompare(b.name));
-    }
-  };
+ {getSortedDecks().map(deck => {
+  const stats = getDeckWinRate(deck.id);
+  return (
+    <div key={deck.id} style={{ 
+      border: '1px solid #ddd', 
+      padding: '15px', 
+      borderRadius: '8px',
+      backgroundColor: 'white',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ flex: 1 }}>
+          <h4 style={{ margin: '0 0 8px 0', color: '#333' }}>
+            {deck.name}
+            {stats.totalGames > 0 && (
+              <span style={{ 
+                marginLeft: '10px', 
+                padding: '2px 8px', 
+                backgroundColor: '#e9ecef',
+                borderRadius: '12px', 
+                fontSize: '12px',
+                color: '#495057'
+              }}>
+                通常: {stats.winRate.toFixed(1)}% | 均一: {stats.normalizedWinRate.toFixed(1)}%
+              </span>
+            )}
+            {stats.totalGames === 0 && (
+              <span style={{ 
+                marginLeft: '10px', 
+                padding: '2px 8px', 
+                backgroundColor: '#f8d7da',
+                borderRadius: '12px', 
+                fontSize: '12px',
+                color: '#721c24'
+              }}>
+                未対戦
+              </span>
+            )}
+          </h4>
+          <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ color: '#666' }}>
+              色: {deck.colors.length > 0 ? deck.colors.join(', ') : '未設定'}
+            </span>
+            {stats.totalGames > 0 && (
+              <>
+                <span style={{ color: '#666', fontSize: '14px' }}>
+                  {stats.wins}勝{stats.losses}敗 (計{stats.totalGames}戦)
+                </span>
+                <span style={{ color: '#666', fontSize: '14px' }}>
+                  先攻率: {stats.goingFirstRate.toFixed(1)}%
+                </span>
+                {stats.goingFirstWinRate > 0 && (
+                  <span style={{ color: '#666', fontSize: '14px' }}>
+                    先攻時: {stats.goingFirstWinRate.toFixed(1)}%
+                  </span>
+                )}
+                {stats.goingSecondWinRate > 0 && (
+                  <span style={{ color: '#666', fontSize: '14px' }}>
+                    後攻時: {stats.goingSecondWinRate.toFixed(1)}%
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+          <button 
+            onClick={() => setSelectedDeck(deck)} 
+            style={{ 
+              padding: '6px 12px', 
+              backgroundColor: '#17a2b8', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: '4px', 
+              cursor: 'pointer',
+              fontSize: '12px'
+            }}
+          >
+            詳細
+          </button>
+          <button 
+            onClick={() => handleDeckDelete(deck.id)} 
+            style={{ 
+              padding: '6px 12px', 
+              backgroundColor: '#dc3545', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: '4px', 
+              cursor: 'pointer',
+              fontSize: '12px'
+            }}
+          >
+            削除
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+})}
 
   if (loading) {
     return (
