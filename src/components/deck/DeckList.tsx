@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { collection, query, where, getDocs, addDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
+import { db } from '../../firebase';
 import { Deck, Battle, DeckListProps } from '../../types';
 import DeckForm from './DeckForm';
 import BattleForm from '../battle/BattleForm';
@@ -13,63 +15,148 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null);
   const [showAnalysis, setShowAnalysis] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<'name' | 'winRate' | 'normalizedWinRate' | 'created'>('name');
+  const [loading, setLoading] = useState<boolean>(true);
 
-  // データ読み込み
+  // Firestoreからデータ読み込み
   useEffect(() => {
-    const savedDecks = localStorage.getItem(`decks_${project.id}`);
-    if (savedDecks) {
-      const parsedDecks = JSON.parse(savedDecks);
-      const decksWithDates = parsedDecks.map((d: any) => ({
-        ...d,
-        createdAt: new Date(d.createdAt)
-      }));
-      setDecks(decksWithDates);
-    }
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        
+        // デッキを読み込み
+        const decksRef = collection(db, 'decks');
+        const decksQuery = query(decksRef, where('projectId', '==', project.id));
+        const decksSnapshot = await getDocs(decksQuery);
+        
+        const loadedDecks: Deck[] = [];
+        decksSnapshot.forEach((doc) => {
+          const data = doc.data();
+          loadedDecks.push({
+            id: doc.id,
+            name: data.name,
+            colors: data.colors,
+            createdAt: data.createdAt.toDate(),
+            projectId: data.projectId
+          });
+        });
 
-    const savedBattles = localStorage.getItem(`battles_${project.id}`);
-    if (savedBattles) {
-      const parsedBattles = JSON.parse(savedBattles);
-      const battlesWithDates = parsedBattles.map((b: any) => ({
-        ...b,
-        date: new Date(b.date)
-      }));
-      setBattles(battlesWithDates);
-    }
+        // 対戦結果を読み込み
+        const battlesRef = collection(db, 'battles');
+        const battlesQuery = query(battlesRef, where('projectId', '==', project.id));
+        const battlesSnapshot = await getDocs(battlesQuery);
+        
+        const loadedBattles: Battle[] = [];
+        battlesSnapshot.forEach((doc) => {
+          const data = doc.data();
+          loadedBattles.push({
+            id: doc.id,
+            deck1Id: data.deck1Id,
+            deck2Id: data.deck2Id,
+            deck1Wins: data.deck1Wins,
+            deck2Wins: data.deck2Wins,
+            memo: data.memo,
+            date: data.date.toDate(),
+            projectId: data.projectId
+          });
+        });
+
+        setDecks(loadedDecks);
+        setBattles(loadedBattles);
+      } catch (error) {
+        console.error('データの読み込みに失敗:', error);
+        alert('データの読み込みに失敗しました');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
   }, [project.id]);
 
-  // データ保存
-  const saveDecks = (updatedDecks: Deck[]) => {
-    localStorage.setItem(`decks_${project.id}`, JSON.stringify(updatedDecks));
-    setDecks(updatedDecks);
-  };
-
-  const saveBattles = (updatedBattles: Battle[]) => {
-    localStorage.setItem(`battles_${project.id}`, JSON.stringify(updatedBattles));
-    setBattles(updatedBattles);
-  };
-
   // デッキ追加
-  const handleDeckAdd = (newDeck: Deck) => {
-    const updatedDecks = [...decks, newDeck];
-    saveDecks(updatedDecks);
-    setShowDeckForm(false);
+  const handleDeckAdd = async (newDeck: Deck) => {
+    try {
+      const deckData = {
+        name: newDeck.name,
+        colors: newDeck.colors,
+        createdAt: newDeck.createdAt,
+        projectId: newDeck.projectId
+      };
+
+      const docRef = await addDoc(collection(db, 'decks'), deckData);
+      
+      const deckWithId = {
+        ...newDeck,
+        id: docRef.id
+      };
+      
+      setDecks(prev => [...prev, deckWithId]);
+      setShowDeckForm(false);
+      
+      console.log('デッキが保存されました:', docRef.id);
+    } catch (error) {
+      console.error('デッキの保存に失敗:', error);
+      alert('デッキの保存に失敗しました');
+    }
   };
 
   // デッキ削除
-  const handleDeckDelete = (deckId: string) => {
+  const handleDeckDelete = async (deckId: string) => {
     if (window.confirm('このデッキを削除しますか？関連する対戦データも削除されます。')) {
-      const updatedDecks = decks.filter(d => d.id !== deckId);
-      const updatedBattles = battles.filter(b => b.deck1Id !== deckId && b.deck2Id !== deckId);
-      saveDecks(updatedDecks);
-      saveBattles(updatedBattles);
+      try {
+        const batch = writeBatch(db);
+
+        // デッキを削除
+        batch.delete(doc(db, 'decks', deckId));
+
+        // 関連する対戦データを削除
+        const relatedBattles = battles.filter(b => b.deck1Id === deckId || b.deck2Id === deckId);
+        relatedBattles.forEach(battle => {
+          batch.delete(doc(db, 'battles', battle.id));
+        });
+
+        await batch.commit();
+
+        // ローカルステートを更新
+        setDecks(prev => prev.filter(d => d.id !== deckId));
+        setBattles(prev => prev.filter(b => b.deck1Id !== deckId && b.deck2Id !== deckId));
+        
+        console.log('デッキと関連データが削除されました:', deckId);
+      } catch (error) {
+        console.error('デッキの削除に失敗:', error);
+        alert('デッキの削除に失敗しました');
+      }
     }
   };
 
   // 対戦追加
-  const handleBattleAdd = (newBattle: Battle) => {
-    const updatedBattles = [...battles, newBattle];
-    saveBattles(updatedBattles);
-    setShowBattleForm(false);
+  const handleBattleAdd = async (newBattle: Battle) => {
+    try {
+      const battleData = {
+        deck1Id: newBattle.deck1Id,
+        deck2Id: newBattle.deck2Id,
+        deck1Wins: newBattle.deck1Wins,
+        deck2Wins: newBattle.deck2Wins,
+        memo: newBattle.memo,
+        date: newBattle.date,
+        projectId: newBattle.projectId
+      };
+
+      const docRef = await addDoc(collection(db, 'battles'), battleData);
+      
+      const battleWithId = {
+        ...newBattle,
+        id: docRef.id
+      };
+      
+      setBattles(prev => [...prev, battleWithId]);
+      setShowBattleForm(false);
+      
+      console.log('対戦結果が保存されました:', docRef.id);
+    } catch (error) {
+      console.error('対戦結果の保存に失敗:', error);
+      alert('対戦結果の保存に失敗しました');
+    }
   };
 
   // 勝率計算（均一化勝率付き）
@@ -103,7 +190,6 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
       const total = stats.wins + stats.losses;
       return total > 0 ? (stats.wins / total) * 100 : 0;
     });
-
     const normalizedWinRate = opponentWinRates.length > 0 
       ? opponentWinRates.reduce((sum, rate) => sum + rate, 0) / opponentWinRates.length
       : 0;
@@ -130,6 +216,14 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
         return sortedDecks.sort((a, b) => a.name.localeCompare(b.name));
     }
   };
+
+  if (loading) {
+    return (
+      <div style={{ padding: '20px', textAlign: 'center' }}>
+        <p>データを読み込み中...</p>
+      </div>
+    );
+  }
 
   // 詳細画面表示中
   if (selectedDeck) {
