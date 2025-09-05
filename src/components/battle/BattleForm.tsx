@@ -6,6 +6,8 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, onBattleAdd, 
   const [deck2Id, setDeck2Id] = useState<string>('');
   const [deck1Wins, setDeck1Wins] = useState<number>(0);
   const [deck2Wins, setDeck2Wins] = useState<number>(0);
+  const [deck1GoingFirst, setDeck1GoingFirst] = useState<number>(0);
+  const [deck2GoingFirst, setDeck2GoingFirst] = useState<number>(0);
   const [memo, setMemo] = useState<string>('');
 
   const handleRandomSelect = (type: 'all' | 'deck1' | 'deck2') => {
@@ -46,12 +48,22 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, onBattleAdd, 
       return;
     }
 
+    const totalGames = deck1Wins + deck2Wins;
+    const totalGoingFirst = deck1GoingFirst + deck2GoingFirst;
+    
+    if (totalGoingFirst !== totalGames) {
+      alert(`先攻回数の合計（${totalGoingFirst}）が総ゲーム数（${totalGames}）と一致しません`);
+      return;
+    }
+
     const newBattle: Battle = {
       id: `battle_${Date.now()}`,
       deck1Id,
       deck2Id,
       deck1Wins,
       deck2Wins,
+      deck1GoingFirst,
+      deck2GoingFirst,
       memo: memo.trim(),
       date: new Date(),
       projectId
@@ -62,6 +74,8 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, onBattleAdd, 
     setDeck2Id('');
     setDeck1Wins(0);
     setDeck2Wins(0);
+    setDeck1GoingFirst(0);
+    setDeck2GoingFirst(0);
     setMemo('');
   };
 
@@ -69,6 +83,9 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, onBattleAdd, 
     const deck = decks.find(d => d.id === deckId);
     return deck ? deck.name : '';
   };
+
+  const totalGames = deck1Wins + deck2Wins;
+  const totalGoingFirst = deck1GoingFirst + deck2GoingFirst;
 
   return (
     <div style={{ 
@@ -153,6 +170,24 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, onBattleAdd, 
               }}
             />
           </div>
+
+          <div style={{ marginTop: '10px' }}>
+            <label style={{ display: 'block', marginBottom: '5px' }}>先攻回数:</label>
+            <input
+              type="number"
+              min="0"
+              max={totalGames}
+              value={deck1GoingFirst}
+              onChange={(e) => setDeck1GoingFirst(parseInt(e.target.value) || 0)}
+              style={{ 
+                width: '100%', 
+                padding: '8px', 
+                fontSize: '14px', 
+                border: '1px solid #ddd', 
+                borderRadius: '4px' 
+              }}
+            />
+          </div>
         </div>
 
         <div>
@@ -210,13 +245,31 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, onBattleAdd, 
               }}
             />
           </div>
+
+          <div style={{ marginTop: '10px' }}>
+            <label style={{ display: 'block', marginBottom: '5px' }}>先攻回数:</label>
+            <input
+              type="number"
+              min="0"
+              max={totalGames}
+              value={deck2GoingFirst}
+              onChange={(e) => setDeck2GoingFirst(parseInt(e.target.value) || 0)}
+              style={{ 
+                width: '100%', 
+                padding: '8px', 
+                fontSize: '14px', 
+                border: '1px solid #ddd', 
+                borderRadius: '4px' 
+              }}
+            />
+          </div>
         </div>
       </div>
 
-      {deck1Id && deck2Id && (
+      {deck1Id && deck2Id && totalGames > 0 && (
         <div style={{ 
           padding: '10px', 
-          backgroundColor: '#e9ecef', 
+          backgroundColor: totalGoingFirst === totalGames ? '#d4edda' : '#f8d7da', 
           borderRadius: '4px', 
           marginBottom: '15px',
           textAlign: 'center' 
@@ -224,6 +277,14 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, onBattleAdd, 
           <strong>
             {getDeckName(deck1Id)} {deck1Wins}勝 - {deck2Wins}勝 {getDeckName(deck2Id)}
           </strong>
+          <div style={{ fontSize: '14px', marginTop: '5px' }}>
+            先攻: {getDeckName(deck1Id)} {deck1GoingFirst}回 / {getDeckName(deck2Id)} {deck2GoingFirst}回
+            {totalGoingFirst !== totalGames && (
+              <span style={{ color: '#721c24', fontWeight: 'bold' }}>
+                （先攻回数が合計ゲーム数と一致しません）
+              </span>
+            )}
+          </div>
         </div>
       )}
       
@@ -279,4 +340,5 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, onBattleAdd, 
     </div>
   );
 };
+
 export default BattleForm;
