@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 
 interface Deck {
@@ -36,12 +36,22 @@ const DeckList: React.FC = () => {
         const loadedDecks: Deck[] = [];
         decksSnapshot.forEach((doc) => {
           const data = doc.data();
+
+          let createdAt: Date;
+          if (data.createdAt instanceof Timestamp) {
+            createdAt = data.createdAt.toDate();
+          } else if (data.createdAt instanceof Date) {
+            createdAt = data.createdAt;
+          } else {
+            createdAt = new Date();
+          }
+
           loadedDecks.push({
             id: doc.id,
-            name: data.name || '',
-            createdAt: data.createdAt ? data.createdAt.toDate() : new Date(),
-            memo: data.memo || '',
-            projectId: data.projectId || '',
+            name: data.name ?? '',
+            createdAt,
+            memo: data.memo ?? '',
+            projectId: data.projectId ?? '',
           });
         });
         setDecks(loadedDecks);
@@ -51,17 +61,27 @@ const DeckList: React.FC = () => {
         const loadedBattles: Battle[] = [];
         battlesSnapshot.forEach((doc) => {
           const data = doc.data();
+
+          let date: Date;
+          if (data.date instanceof Timestamp) {
+            date = data.date.toDate();
+          } else if (data.date instanceof Date) {
+            date = data.date;
+          } else {
+            date = new Date();
+          }
+
           loadedBattles.push({
             id: doc.id,
-            deck1Id: data.deck1Id || '',
-            deck2Id: data.deck2Id || '',
-            deck1Wins: data.deck1Wins || 0,
-            deck2Wins: data.deck2Wins || 0,
-            deck1GoingFirst: data.deck1GoingFirst || 0,
-            deck2GoingFirst: data.deck2GoingFirst || 0,
-            memo: data.memo || '',
-            date: data.date ? data.date.toDate() : new Date(),
-            projectId: data.projectId || '',
+            deck1Id: data.deck1Id ?? '',
+            deck2Id: data.deck2Id ?? '',
+            deck1Wins: data.deck1Wins ?? 0,
+            deck2Wins: data.deck2Wins ?? 0,
+            deck1GoingFirst: data.deck1GoingFirst ?? 0,
+            deck2GoingFirst: data.deck2GoingFirst ?? 0,
+            memo: data.memo ?? '',
+            date,
+            projectId: data.projectId ?? '',
           });
         });
         setBattles(loadedBattles);
