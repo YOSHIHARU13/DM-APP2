@@ -160,6 +160,7 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
   };
 
   // 勝率計算（先攻後攻統計付き）
+// 勝率計算（先攻後攻統計付き）
 const getDeckWinRate = (deckId: string) => {
   const deckBattles = battles.filter(b => b.deck1Id === deckId || b.deck2Id === deckId);
   if (deckBattles.length === 0) return { 
@@ -172,6 +173,76 @@ const getDeckWinRate = (deckId: string) => {
     goingFirstWinRate: 0,
     goingSecondWinRate: 0
   };
+
+  let wins = 0;
+  let losses = 0;
+  let goingFirstGames = 0;
+  let goingFirstWins = 0;
+  let goingSecondGames = 0;
+  let goingSecondWins = 0;
+  const opponentStats: { [opponentId: string]: { wins: number; losses: number } } = {};
+
+  deckBattles.forEach(battle => {
+    const isPlayer1 = battle.deck1Id === deckId;
+    const opponentId = isPlayer1 ? battle.deck2Id : battle.deck1Id;
+    const myWins = isPlayer1 ? battle.deck1Wins : battle.deck2Wins;
+    const myLosses = isPlayer1 ? battle.deck2Wins : battle.deck1Wins;
+    
+    // 古いデータ対応：先攻情報がない場合は0として扱う
+    const myGoingFirst = isPlayer1 ? (battle.deck1GoingFirst || 0) : (battle.deck2GoingFirst || 0);
+    const myGoingSecond = isPlayer1 ? (battle.deck2GoingFirst || 0) : (battle.deck1GoingFirst || 0);
+
+    wins += myWins;
+    losses += myLosses;
+
+    // 先攻後攻の統計（データがある場合のみ）
+    if (battle.deck1GoingFirst !== undefined && battle.deck2GoingFirst !== undefined) {
+      goingFirstGames += myGoingFirst;
+      goingSecondGames += myGoingSecond;
+
+      if (myGoingFirst + myGoingSecond > 0) {
+        const myGoingFirstRate = myGoingFirst / (myGoingFirst + myGoingSecond);
+        goingFirstWins += Math.round(myWins * myGoingFirstRate);
+        goingSecondWins += myWins - Math.round(myWins * myGoingFirstRate);
+      }
+    }
+
+    // 対戦相手別統計
+    if (!opponentStats[opponentId]) {
+      opponentStats[opponentId] = { wins: 0, losses: 0 };
+    }
+    opponentStats[opponentId].wins += myWins;
+    opponentStats[opponentId].losses += myLosses;
+  });
+
+  // 以下は同じ...
+  const opponentWinRates = Object.values(opponentStats).map(stats => {
+    const total = stats.wins + stats.losses;
+    return total > 0 ? (stats.wins / total) * 100 : 0;
+  });
+
+  const normalizedWinRate = opponentWinRates.length > 0 
+    ? opponentWinRates.reduce((sum, rate) => sum + rate, 0) / opponentWinRates.length
+    : 0;
+
+  const totalGames = wins + losses;
+  const totalGoingFirstSecond = goingFirstGames + goingSecondGames;
+  const winRate = totalGames > 0 ? (wins / totalGames) * 100 : 0;
+  const goingFirstRate = totalGoingFirstSecond > 0 ? (goingFirstGames / totalGoingFirstSecond) * 100 : 0;
+  const goingFirstWinRate = goingFirstGames > 0 ? (goingFirstWins / goingFirstGames) * 100 : 0;
+  const goingSecondWinRate = goingSecondGames > 0 ? (goingSecondWins / goingSecondGames) * 100 : 0;
+
+  return { 
+    winRate, 
+    totalGames, 
+    wins, 
+    losses, 
+    normalizedWinRate,
+    goingFirstRate,
+    goingFirstWinRate,
+    goingSecondWinRate
+  };
+};
 
   let wins = 0;
   let losses = 0;
