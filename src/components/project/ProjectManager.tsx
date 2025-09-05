@@ -1,53 +1,105 @@
 import React, { useState, useEffect } from 'react';
+import { collection, query, where, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../../firebase';
 import { Project, ProjectManagerProps } from '../../types';
 import ProjectForm from './ProjectForm';
 
 const ProjectManager: React.FC<ProjectManagerProps> = ({ user, onProjectSelect }) => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [showForm, setShowForm] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  // ローカルストレージからプロジェクト一覧を読み込み
+  // Firestoreからプロジェクト一覧を読み込み
   useEffect(() => {
-    const savedProjects = localStorage.getItem(`projects_${user.id}`);
-    if (savedProjects) {
-      const parsedProjects = JSON.parse(savedProjects);
-      // Date型の復元
-      const projectsWithDates = parsedProjects.map((p: any) => ({
-        ...p,
-        createdAt: new Date(p.createdAt)
-      }));
-      setProjects(projectsWithDates);
-    }
+    const loadProjects = async () => {
+      try {
+        const projectsRef = collection(db, 'projects');
+        const q = query(projectsRef, where('userId', '==', user.id));
+        const querySnapshot = await getDocs(q);
+        
+        const loadedProjects: Project[] = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          loadedProjects.push({
+            id: doc.id,
+            name: data.name,
+            description: data.description,
+            createdAt: data.createdAt.toDate(), // Firestoreのタイムスタンプを変換
+            userId: data.userId
+          });
+        });
+
+        // 作成日順でソート（新しい順）
+        loadedProjects.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        setProjects(loadedProjects);
+      } catch (error) {
+        console.error('プロジェクトの読み込みに失敗:', error);
+        alert('プロジェクトの読み込みに失敗しました');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProjects();
   }, [user.id]);
 
-  // プロジェクトをローカルストレージに保存
-  const saveProjects = (updatedProjects: Project[]) => {
-    localStorage.setItem(`projects_${user.id}`, JSON.stringify(updatedProjects));
-    setProjects(updatedProjects);
-  };
-
   // 新しいプロジェクトが追加されたときの処理
-  const handleProjectAdd = (newProject: Project) => {
-    const projectWithUserId = {
-      ...newProject,
-      userId: user.id
-    };
-    const updatedProjects = [...projects, projectWithUserId];
-    saveProjects(updatedProjects);
-    setShowForm(false);
+  const handleProjectAdd = async (newProject: Project) => {
+    try {
+      const projectData = {
+        name: newProject.name,
+        description: newProject.description,
+        createdAt: newProject.createdAt,
+        userId: user.id
+      };
+
+      const docRef = await addDoc(collection(db, 'projects'), projectData);
+      
+      // ローカルステートを更新
+      const projectWithId = {
+        ...newProject,
+        id: docRef.id,
+        userId: user.id
+      };
+      
+      setProjects(prev => [projectWithId, ...prev]);
+      setShowForm(false);
+      
+      console.log('プロジェクトが保存されました:', docRef.id);
+    } catch (error) {
+      console.error('プロジェクトの保存に失敗:', error);
+      alert('プロジェクトの保存に失敗しました');
+    }
   };
 
   // プロジェクト削除
-  const handleDeleteProject = (projectId: string) => {
+  const handleDeleteProject = async (projectId: string) => {
     if (window.confirm('このプロジェクトを削除しますか？デッキや対戦データも全て削除されます。')) {
-      const updatedProjects = projects.filter(p => p.id !== projectId);
-      saveProjects(updatedProjects);
-      
-      // 関連データも削除
-      localStorage.removeItem(`decks_${projectId}`);
-      localStorage.removeItem(`battles_${projectId}`);
+      try {
+        // Firestoreからプロジェクトを削除
+        await deleteDoc(doc(db, 'projects', projectId));
+        
+        // TODO: 関連するデッキと対戦データも削除する必要があります
+        // 後でDeckListを修正した後に実装します
+        
+        // ローカルステートを更新
+        setProjects(prev => prev.filter(p => p.id !== projectId));
+        
+        console.log('プロジェクトが削除されました:', projectId);
+      } catch (error) {
+        console.error('プロジェクトの削除に失敗:', error);
+        alert('プロジェクトの削除に失敗しました');
+      }
     }
   };
+
+  if (loading) {
+    return (
+      <div style={{ padding: '20px', textAlign: 'center' }}>
+        <p>プロジェクトを読み込み中...</p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '20px' }}>
@@ -153,3 +205,4 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({ user, onProjectSelect }
 };
 
 export default ProjectManager;
+
