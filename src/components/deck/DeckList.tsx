@@ -33,10 +33,10 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
           const data = doc.data();
           loadedDecks.push({
             id: doc.id,
-            name: data.name,
-            colors: data.colors,
-            createdAt: data.createdAt.toDate(),
-            projectId: data.projectId
+            name: data.name || '',
+            colors: data.colors || [],
+            createdAt: data.createdAt ? data.createdAt.toDate() : new Date(),
+            projectId: data.projectId || ''
           });
         });
 
@@ -50,13 +50,15 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
           const data = doc.data();
           loadedBattles.push({
             id: doc.id,
-            deck1Id: data.deck1Id,
-            deck2Id: data.deck2Id,
-            deck1Wins: data.deck1Wins,
-            deck2Wins: data.deck2Wins,
-            memo: data.memo,
-            date: data.date.toDate(),
-            projectId: data.projectId
+            deck1Id: data.deck1Id || '',
+            deck2Id: data.deck2Id || '',
+            deck1Wins: data.deck1Wins || 0,
+            deck2Wins: data.deck2Wins || 0,
+            deck1GoingFirst: data.deck1GoingFirst || 0,
+            deck2GoingFirst: data.deck2GoingFirst || 0,
+            memo: data.memo || '',
+            date: data.date ? data.date.toDate() : new Date(),
+            projectId: data.projectId || ''
           });
         });
 
@@ -137,6 +139,8 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
         deck2Id: newBattle.deck2Id,
         deck1Wins: newBattle.deck1Wins,
         deck2Wins: newBattle.deck2Wins,
+        deck1GoingFirst: newBattle.deck1GoingFirst,
+        deck2GoingFirst: newBattle.deck2GoingFirst,
         memo: newBattle.memo,
         date: newBattle.date,
         projectId: newBattle.projectId
@@ -160,257 +164,105 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
   };
 
   // 勝率計算（先攻後攻統計付き）
-// 勝率計算（先攻後攻統計付き）
-const getDeckWinRate = (deckId: string) => {
-  const deckBattles = battles.filter(b => b.deck1Id === deckId || b.deck2Id === deckId);
-  if (deckBattles.length === 0) return { 
-    winRate: 0, 
-    totalGames: 0, 
-    wins: 0, 
-    losses: 0, 
-    normalizedWinRate: 0,
-    goingFirstRate: 0,
-    goingFirstWinRate: 0,
-    goingSecondWinRate: 0
-  };
+  const getDeckWinRate = (deckId: string) => {
+    const deckBattles = battles.filter(b => b.deck1Id === deckId || b.deck2Id === deckId);
+    if (deckBattles.length === 0) return { 
+      winRate: 0, 
+      totalGames: 0, 
+      wins: 0, 
+      losses: 0, 
+      normalizedWinRate: 0,
+      goingFirstRate: 0,
+      goingFirstWinRate: 0,
+      goingSecondWinRate: 0
+    };
 
-  let wins = 0;
-  let losses = 0;
-  let goingFirstGames = 0;
-  let goingFirstWins = 0;
-  let goingSecondGames = 0;
-  let goingSecondWins = 0;
-  const opponentStats: { [opponentId: string]: { wins: number; losses: number } } = {};
+    let wins = 0;
+    let losses = 0;
+    let goingFirstGames = 0;
+    let goingFirstWins = 0;
+    let goingSecondGames = 0;
+    let goingSecondWins = 0;
+    const opponentStats: { [opponentId: string]: { wins: number; losses: number } } = {};
 
-  deckBattles.forEach(battle => {
-    const isPlayer1 = battle.deck1Id === deckId;
-    const opponentId = isPlayer1 ? battle.deck2Id : battle.deck1Id;
-    const myWins = isPlayer1 ? battle.deck1Wins : battle.deck2Wins;
-    const myLosses = isPlayer1 ? battle.deck2Wins : battle.deck1Wins;
-    
-    // 古いデータ対応：先攻情報がない場合は0として扱う
-    const myGoingFirst = isPlayer1 ? (battle.deck1GoingFirst || 0) : (battle.deck2GoingFirst || 0);
-    const myGoingSecond = isPlayer1 ? (battle.deck2GoingFirst || 0) : (battle.deck1GoingFirst || 0);
+    deckBattles.forEach(battle => {
+      const isPlayer1 = battle.deck1Id === deckId;
+      const opponentId = isPlayer1 ? battle.deck2Id : battle.deck1Id;
+      const myWins = isPlayer1 ? battle.deck1Wins : battle.deck2Wins;
+      const myLosses = isPlayer1 ? battle.deck2Wins : battle.deck1Wins;
+      
+      // 古いデータ対応：先攻情報がない場合は0として扱う
+      const myGoingFirst = isPlayer1 ? (battle.deck1GoingFirst || 0) : (battle.deck2GoingFirst || 0);
+      const myGoingSecond = isPlayer1 ? (battle.deck2GoingFirst || 0) : (battle.deck1GoingFirst || 0);
 
-    wins += myWins;
-    losses += myLosses;
+      wins += myWins;
+      losses += myLosses;
 
-    // 先攻後攻の統計（データがある場合のみ）
-    if (battle.deck1GoingFirst !== undefined && battle.deck2GoingFirst !== undefined) {
-      goingFirstGames += myGoingFirst;
-      goingSecondGames += myGoingSecond;
+      // 先攻後攻の統計（データがある場合のみ）
+      if (battle.deck1GoingFirst !== undefined && battle.deck2GoingFirst !== undefined) {
+        goingFirstGames += myGoingFirst;
+        goingSecondGames += myGoingSecond;
 
-      if (myGoingFirst + myGoingSecond > 0) {
-        const myGoingFirstRate = myGoingFirst / (myGoingFirst + myGoingSecond);
-        goingFirstWins += Math.round(myWins * myGoingFirstRate);
-        goingSecondWins += myWins - Math.round(myWins * myGoingFirstRate);
+        if (myGoingFirst + myGoingSecond > 0) {
+          const myGoingFirstRate = myGoingFirst / (myGoingFirst + myGoingSecond);
+          goingFirstWins += Math.round(myWins * myGoingFirstRate);
+          goingSecondWins += myWins - Math.round(myWins * myGoingFirstRate);
+        }
       }
-    }
 
-    // 対戦相手別統計
-    if (!opponentStats[opponentId]) {
-      opponentStats[opponentId] = { wins: 0, losses: 0 };
-    }
-    opponentStats[opponentId].wins += myWins;
-    opponentStats[opponentId].losses += myLosses;
-  });
+      // 対戦相手別統計
+      if (!opponentStats[opponentId]) {
+        opponentStats[opponentId] = { wins: 0, losses: 0 };
+      }
+      opponentStats[opponentId].wins += myWins;
+      opponentStats[opponentId].losses += myLosses;
+    });
 
-  // 以下は同じ...
-  const opponentWinRates = Object.values(opponentStats).map(stats => {
-    const total = stats.wins + stats.losses;
-    return total > 0 ? (stats.wins / total) * 100 : 0;
-  });
+    // 均一化勝率計算
+    const opponentWinRates = Object.values(opponentStats).map(stats => {
+      const total = stats.wins + stats.losses;
+      return total > 0 ? (stats.wins / total) * 100 : 0;
+    });
 
-  const normalizedWinRate = opponentWinRates.length > 0 
-    ? opponentWinRates.reduce((sum, rate) => sum + rate, 0) / opponentWinRates.length
-    : 0;
+    const normalizedWinRate = opponentWinRates.length > 0 
+      ? opponentWinRates.reduce((sum, rate) => sum + rate, 0) / opponentWinRates.length
+      : 0;
 
-  const totalGames = wins + losses;
-  const totalGoingFirstSecond = goingFirstGames + goingSecondGames;
-  const winRate = totalGames > 0 ? (wins / totalGames) * 100 : 0;
-  const goingFirstRate = totalGoingFirstSecond > 0 ? (goingFirstGames / totalGoingFirstSecond) * 100 : 0;
-  const goingFirstWinRate = goingFirstGames > 0 ? (goingFirstWins / goingFirstGames) * 100 : 0;
-  const goingSecondWinRate = goingSecondGames > 0 ? (goingSecondWins / goingSecondGames) * 100 : 0;
+    const totalGames = wins + losses;
+    const totalGoingFirstSecond = goingFirstGames + goingSecondGames;
+    const winRate = totalGames > 0 ? (wins / totalGames) * 100 : 0;
+    const goingFirstRate = totalGoingFirstSecond > 0 ? (goingFirstGames / totalGoingFirstSecond) * 100 : 0;
+    const goingFirstWinRate = goingFirstGames > 0 ? (goingFirstWins / goingFirstGames) * 100 : 0;
+    const goingSecondWinRate = goingSecondGames > 0 ? (goingSecondWins / goingSecondGames) * 100 : 0;
 
-  return { 
-    winRate, 
-    totalGames, 
-    wins, 
-    losses, 
-    normalizedWinRate,
-    goingFirstRate,
-    goingFirstWinRate,
-    goingSecondWinRate
+    return { 
+      winRate, 
+      totalGames, 
+      wins, 
+      losses, 
+      normalizedWinRate,
+      goingFirstRate,
+      goingFirstWinRate,
+      goingSecondWinRate
+    };
   };
-};
-
-  let wins = 0;
-  let losses = 0;
-  let goingFirstGames = 0;
-  let goingFirstWins = 0;
-  let goingSecondGames = 0;
-  let goingSecondWins = 0;
-  const opponentStats: { [opponentId: string]: { wins: number; losses: number } } = {};
-
-  deckBattles.forEach(battle => {
-    const isPlayer1 = battle.deck1Id === deckId;
-    const opponentId = isPlayer1 ? battle.deck2Id : battle.deck1Id;
-    const myWins = isPlayer1 ? battle.deck1Wins : battle.deck2Wins;
-    const myLosses = isPlayer1 ? battle.deck2Wins : battle.deck1Wins;
-    const myGoingFirst = isPlayer1 ? battle.deck1GoingFirst : battle.deck2GoingFirst;
-    const myGoingSecond = isPlayer1 ? battle.deck2GoingFirst : battle.deck1GoingFirst;
-
-    wins += myWins;
-    losses += myLosses;
-
-    // 先攻後攻の統計
-    goingFirstGames += myGoingFirst;
-    goingSecondGames += myGoingSecond;
-
-    // 先攻時・後攻時の勝利数を計算（簡易計算：先攻率に応じて勝利を配分）
-    if (myGoingFirst + myGoingSecond > 0) {
-      const myGoingFirstRate = myGoingFirst / (myGoingFirst + myGoingSecond);
-      goingFirstWins += Math.round(myWins * myGoingFirstRate);
-      goingSecondWins += myWins - Math.round(myWins * myGoingFirstRate);
-    }
-
-    // 対戦相手別統計
-    if (!opponentStats[opponentId]) {
-      opponentStats[opponentId] = { wins: 0, losses: 0 };
-    }
-    opponentStats[opponentId].wins += myWins;
-    opponentStats[opponentId].losses += myLosses;
-  });
-
-  // 均一化勝率計算
-  const opponentWinRates = Object.values(opponentStats).map(stats => {
-    const total = stats.wins + stats.losses;
-    return total > 0 ? (stats.wins / total) * 100 : 0;
-  });
-
-  const normalizedWinRate = opponentWinRates.length > 0 
-    ? opponentWinRates.reduce((sum, rate) => sum + rate, 0) / opponentWinRates.length
-    : 0;
-
-  const totalGames = wins + losses;
-  const totalGoingFirstSecond = goingFirstGames + goingSecondGames;
-  const winRate = totalGames > 0 ? (wins / totalGames) * 100 : 0;
-  const goingFirstRate = totalGoingFirstSecond > 0 ? (goingFirstGames / totalGoingFirstSecond) * 100 : 0;
-  const goingFirstWinRate = goingFirstGames > 0 ? (goingFirstWins / goingFirstGames) * 100 : 0;
-  const goingSecondWinRate = goingSecondGames > 0 ? (goingSecondWins / goingSecondGames) * 100 : 0;
-
-  return { 
-    winRate, 
-    totalGames, 
-    wins, 
-    losses, 
-    normalizedWinRate,
-    goingFirstRate,
-    goingFirstWinRate,
-    goingSecondWinRate
-  };
-};
   
   // ソート機能
- {getSortedDecks().map(deck => {
-  const stats = getDeckWinRate(deck.id);
-  return (
-    <div key={deck.id} style={{ 
-      border: '1px solid #ddd', 
-      padding: '15px', 
-      borderRadius: '8px',
-      backgroundColor: 'white',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ flex: 1 }}>
-          <h4 style={{ margin: '0 0 8px 0', color: '#333' }}>
-            {deck.name}
-            {stats.totalGames > 0 && (
-              <span style={{ 
-                marginLeft: '10px', 
-                padding: '2px 8px', 
-                backgroundColor: '#e9ecef',
-                borderRadius: '12px', 
-                fontSize: '12px',
-                color: '#495057'
-              }}>
-                通常: {stats.winRate.toFixed(1)}% | 均一: {stats.normalizedWinRate.toFixed(1)}%
-              </span>
-            )}
-            {stats.totalGames === 0 && (
-              <span style={{ 
-                marginLeft: '10px', 
-                padding: '2px 8px', 
-                backgroundColor: '#f8d7da',
-                borderRadius: '12px', 
-                fontSize: '12px',
-                color: '#721c24'
-              }}>
-                未対戦
-              </span>
-            )}
-          </h4>
-          <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ color: '#666' }}>
-              色: {deck.colors.length > 0 ? deck.colors.join(', ') : '未設定'}
-            </span>
-            {stats.totalGames > 0 && (
-              <>
-                <span style={{ color: '#666', fontSize: '14px' }}>
-                  {stats.wins}勝{stats.losses}敗 (計{stats.totalGames}戦)
-                </span>
-                <span style={{ color: '#666', fontSize: '14px' }}>
-                  先攻率: {stats.goingFirstRate.toFixed(1)}%
-                </span>
-                {stats.goingFirstWinRate > 0 && (
-                  <span style={{ color: '#666', fontSize: '14px' }}>
-                    先攻時: {stats.goingFirstWinRate.toFixed(1)}%
-                  </span>
-                )}
-                {stats.goingSecondWinRate > 0 && (
-                  <span style={{ color: '#666', fontSize: '14px' }}>
-                    後攻時: {stats.goingSecondWinRate.toFixed(1)}%
-                  </span>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-          <button 
-            onClick={() => setSelectedDeck(deck)} 
-            style={{ 
-              padding: '6px 12px', 
-              backgroundColor: '#17a2b8', 
-              color: 'white', 
-              border: 'none', 
-              borderRadius: '4px', 
-              cursor: 'pointer',
-              fontSize: '12px'
-            }}
-          >
-            詳細
-          </button>
-          <button 
-            onClick={() => handleDeckDelete(deck.id)} 
-            style={{ 
-              padding: '6px 12px', 
-              backgroundColor: '#dc3545', 
-              color: 'white', 
-              border: 'none', 
-              borderRadius: '4px', 
-              cursor: 'pointer',
-              fontSize: '12px'
-            }}
-          >
-            削除
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-})}
+  const getSortedDecks = () => {
+    const sortedDecks = [...decks];
+    
+    switch (sortBy) {
+      case 'winRate':
+        return sortedDecks.sort((a, b) => getDeckWinRate(b.id).winRate - getDeckWinRate(a.id).winRate);
+      case 'normalizedWinRate':
+        return sortedDecks.sort((a, b) => getDeckWinRate(b.id).normalizedWinRate - getDeckWinRate(a.id).normalizedWinRate);
+      case 'created':
+        return sortedDecks.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      case 'name':
+      default:
+        return sortedDecks.sort((a, b) => a.name.localeCompare(b.name));
+    }
+  };
 
   if (loading) {
     return (
@@ -624,14 +476,29 @@ const getDeckWinRate = (deckId: string) => {
                           </span>
                         )}
                       </h4>
-                      <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
                         <span style={{ color: '#666' }}>
                           色: {deck.colors.length > 0 ? deck.colors.join(', ') : '未設定'}
                         </span>
                         {stats.totalGames > 0 && (
-                          <span style={{ color: '#666', fontSize: '14px' }}>
-                            {stats.wins}勝{stats.losses}敗 (計{stats.totalGames}戦)
-                          </span>
+                          <>
+                            <span style={{ color: '#666', fontSize: '14px' }}>
+                              {stats.wins}勝{stats.losses}敗 (計{stats.totalGames}戦)
+                            </span>
+                            <span style={{ color: '#666', fontSize: '14px' }}>
+                              先攻率: {stats.goingFirstRate.toFixed(1)}%
+                            </span>
+                            {stats.goingFirstWinRate > 0 && (
+                              <span style={{ color: '#666', fontSize: '14px' }}>
+                                先攻時: {stats.goingFirstWinRate.toFixed(1)}%
+                              </span>
+                            )}
+                            {stats.goingSecondWinRate > 0 && (
+                              <span style={{ color: '#666', fontSize: '14px' }}>
+                                後攻時: {stats.goingSecondWinRate.toFixed(1)}%
+                              </span>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
