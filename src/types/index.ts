@@ -40,15 +40,15 @@ export interface Deck {
   projectId: string;
 }
 
-// Battle型を更新
+// Battle型（1戦ずつの記録）
 export interface Battle {
   id: string;
   deck1Id: string;
   deck2Id: string;
-  deck1Wins: number;
-  deck2Wins: number;
-  deck1GoingFirst: number;  // デッキ1が先攻した回数
-  deck2GoingFirst: number;  // デッキ2が先攻した回数
+  deck1Wins: number;        // 1 or 0 (1戦の勝敗)
+  deck2Wins: number;        // 1 or 0 (1戦の勝敗)
+  deck1GoingFirst: number;  // 1 or 0 (先攻かどうか)
+  deck2GoingFirst: number;  // 1 or 0 (先攻かどうか)
   memo: string;
   date: Date;
   projectId: string;
@@ -81,6 +81,7 @@ export interface DeckDetailProps {
   battles: Battle[];
   allDecks: Deck[];
   onBack: () => void;
+  onBattleDelete?: (battleId: string) => void;
 }
 
 // 分析画面のProps
