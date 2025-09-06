@@ -1,9 +1,41 @@
 import React from 'react';
+import { deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../../firebase';
 import { DeckDetailProps } from '../../types';
 
-const DeckDetail: React.FC<DeckDetailProps> = ({ deck, battles, allDecks, onBack }) => {
+interface DeckDetailWithDeleteProps extends DeckDetailProps {
+  onBattleDelete?: (battleId: string) => void;
+}
+
+const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDecks, onBack, onBattleDelete }) => {
   // このデッキの対戦データを取得
   const deckBattles = battles.filter(b => b.deck1Id === deck.id || b.deck2Id === deck.id);
+
+  // 対戦削除
+  const handleBattleDelete = async (battleId: string, opponentName: string, battleDate: string) => {
+    const confirmed = window.confirm(
+      `この対戦記録を削除しますか？\n\n対戦相手: ${opponentName}\n日時: ${battleDate}\n\n※この操作は取り消せません。`
+    );
+    
+    if (!confirmed) return;
+
+    try {
+      // Firestoreから削除（展開されたデータかチェック）
+      if (!battleId.includes('_game_')) {
+        await deleteDoc(doc(db, 'battles', battleId));
+      }
+      
+      // 親コンポーネントに削除を通知
+      if (onBattleDelete) {
+        onBattleDelete(battleId);
+      }
+      
+      console.log('対戦記録が削除されました:', battleId);
+    } catch (error) {
+      console.error('対戦記録の削除に失敗:', error);
+      alert('対戦記録の削除に失敗しました');
+    }
+  };
 
   // 対戦相手別の統計
   const getOpponentStats = () => {
@@ -34,6 +66,43 @@ const DeckDetail: React.FC<DeckDetailProps> = ({ deck, battles, allDecks, onBack
   const totalLosses = Object.values(opponentStats).reduce((sum, stats) => sum + stats.losses, 0);
   const totalGames = totalWins + totalLosses;
   const overallWinRate = totalGames > 0 ? (totalWins / totalGames) * 100 : 0;
+
+  // 先攻・後攻統計
+  const getGoingFirstStats = () => {
+    let goingFirstGames = 0;
+    let goingFirstWins = 0;
+    let goingSecondGames = 0;
+    let goingSecondWins = 0;
+
+    deckBattles.forEach(battle => {
+      const isPlayer1 = battle.deck1Id === deck.id;
+      const myWins = isPlayer1 ? battle.deck1Wins : battle.deck2Wins;
+      const myGoingFirst = isPlayer1 ? battle.deck1GoingFirst : battle.deck2GoingFirst;
+
+      if (myGoingFirst === 1) {
+        goingFirstGames++;
+        goingFirstWins += myWins;
+      } else {
+        goingSecondGames++;
+        goingSecondWins += myWins;
+      }
+    });
+
+    const totalGoingFirstSecond = goingFirstGames + goingSecondGames;
+    const goingFirstRate = totalGoingFirstSecond > 0 ? (goingFirstGames / totalGoingFirstSecond) * 100 : 0;
+    const goingFirstWinRate = goingFirstGames > 0 ? (goingFirstWins / goingFirstGames) * 100 : 0;
+    const goingSecondWinRate = goingSecondGames > 0 ? (goingSecondWins / goingSecondGames) * 100 : 0;
+
+    return {
+      goingFirstRate,
+      goingFirstWinRate,
+      goingSecondWinRate,
+      goingFirstGames,
+      goingSecondGames
+    };
+  };
+
+  const goingFirstStats = getGoingFirstStats();
 
   // デッキ名取得
   const getDeckName = (deckId: string) => {
@@ -105,7 +174,7 @@ const DeckDetail: React.FC<DeckDetailProps> = ({ deck, battles, allDecks, onBack
           {/* 全体統計 */}
           <div style={{ 
             display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
             gap: '15px', 
             marginBottom: '30px' 
           }}>
@@ -130,12 +199,12 @@ const DeckDetail: React.FC<DeckDetailProps> = ({ deck, battles, allDecks, onBack
               borderRadius: '8px',
               textAlign: 'center'
             }}>
-              <h4 style={{ margin: '0 0 5px 0', color: '#388e3c' }}>総対戦回数</h4>
+              <h4 style={{ margin: '0 0 5px 0', color: '#388e3c' }}>先攻率</h4>
               <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#388e3c' }}>
-                {deckBattles.length}回
+                {goingFirstStats.goingFirstRate.toFixed(1)}%
               </div>
               <div style={{ fontSize: '14px', color: '#666' }}>
-                {totalGames}ゲーム
+                先攻{goingFirstStats.goingFirstGames}回/後攻{goingFirstStats.goingSecondGames}回
               </div>
             </div>
 
@@ -145,8 +214,38 @@ const DeckDetail: React.FC<DeckDetailProps> = ({ deck, battles, allDecks, onBack
               borderRadius: '8px',
               textAlign: 'center'
             }}>
-              <h4 style={{ margin: '0 0 5px 0', color: '#f57c00' }}>最近の調子</h4>
-              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#f57c00', letterSpacing: '2px' }}>
+              <h4 style={{ margin: '0 0 5px 0', color: '#f57c00' }}>先攻時勝率</h4>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f57c00' }}>
+                {goingFirstStats.goingFirstWinRate.toFixed(1)}%
+              </div>
+              <div style={{ fontSize: '14px', color: '#666' }}>
+                先攻時の成績
+              </div>
+            </div>
+
+            <div style={{ 
+              padding: '15px', 
+              backgroundColor: '#fce4ec', 
+              borderRadius: '8px',
+              textAlign: 'center'
+            }}>
+              <h4 style={{ margin: '0 0 5px 0', color: '#c2185b' }}>後攻時勝率</h4>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#c2185b' }}>
+                {goingFirstStats.goingSecondWinRate.toFixed(1)}%
+              </div>
+              <div style={{ fontSize: '14px', color: '#666' }}>
+                後攻時の成績
+              </div>
+            </div>
+
+            <div style={{ 
+              padding: '15px', 
+              backgroundColor: '#f3e5f5', 
+              borderRadius: '8px',
+              textAlign: 'center'
+            }}>
+              <h4 style={{ margin: '0 0 5px 0', color: '#7b1fa2' }}>最近の調子</h4>
+              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#7b1fa2', letterSpacing: '2px' }}>
                 {recentForm.join('') || '-'}
               </div>
               <div style={{ fontSize: '14px', color: '#666' }}>
@@ -219,55 +318,85 @@ const DeckDetail: React.FC<DeckDetailProps> = ({ deck, battles, allDecks, onBack
                   const myWins = isPlayer1 ? battle.deck1Wins : battle.deck2Wins;
                   const opponentWins = isPlayer1 ? battle.deck2Wins : battle.deck1Wins;
                   const won = myWins > opponentWins;
+                  const myGoingFirst = isPlayer1 ? battle.deck1GoingFirst : battle.deck2GoingFirst;
+                  const isGoingFirst = myGoingFirst === 1;
+                  const opponentName = getDeckName(opponentId);
+                  const battleDate = battle.date.toLocaleDateString();
 
                   return (
                     <div key={battle.id} style={{ 
-                      padding: '10px', 
+                      padding: '12px', 
                       border: '1px solid #ddd', 
-                      borderRadius: '4px',
+                      borderRadius: '6px',
                       backgroundColor: won ? '#e8f5e8' : '#ffebee',
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center'
                     }}>
-                      <div>
-                        <span style={{ fontWeight: 'bold' }}>
-                          vs {getDeckName(opponentId)}
-                        </span>
-                        <span style={{ 
-                          marginLeft: '10px',
-                          padding: '2px 6px',
-                          borderRadius: '10px',
-                          fontSize: '12px',
-                          backgroundColor: won ? '#4caf50' : '#f44336',
-                          color: 'white'
-                        }}>
-                          {won ? '勝利' : '敗北'}
-                        </span>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontWeight: 'bold' }}>
-                          {myWins} - {opponentWins}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <span style={{ fontWeight: 'bold' }}>
+                            vs {opponentName}
+                          </span>
+                          <span style={{ 
+                            padding: '2px 6px',
+                            borderRadius: '10px',
+                            fontSize: '12px',
+                            backgroundColor: won ? '#4caf50' : '#f44336',
+                            color: 'white'
+                          }}>
+                            {won ? '勝利' : '敗北'}
+                          </span>
+                          <span style={{ 
+                            padding: '2px 6px',
+                            borderRadius: '10px',
+                            fontSize: '12px',
+                            backgroundColor: isGoingFirst ? '#2196f3' : '#ff9800',
+                            color: 'white'
+                          }}>
+                            {isGoingFirst ? '先攻' : '後攻'}
+                          </span>
                         </div>
                         <div style={{ fontSize: '12px', color: '#666' }}>
-                          {battle.date.toLocaleDateString()}
+                          {battleDate}
+                          {battle.memo && (
+                            <span style={{ 
+                              marginLeft: '10px', 
+                              padding: '2px 6px', 
+                              backgroundColor: 'rgba(0,0,0,0.1)', 
+                              borderRadius: '4px'
+                            }}>
+                              {battle.memo}
+                            </span>
+                          )}
                         </div>
                       </div>
-                      {battle.memo && (
-                        <div style={{ 
-                          marginLeft: '15px', 
-                          padding: '4px 8px', 
-                          backgroundColor: 'rgba(0,0,0,0.1)', 
-                          borderRadius: '4px',
-                          fontSize: '12px',
-                          maxWidth: '200px',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap'
-                        }}>
-                          {battle.memo}
+                      
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontWeight: 'bold' }}>
+                            {myWins} - {opponentWins}
+                          </div>
                         </div>
-                      )}
+                        
+                        {onBattleDelete && (
+                          <button
+                            onClick={() => handleBattleDelete(battle.id, opponentName, battleDate)}
+                            style={{
+                              padding: '4px 8px',
+                              backgroundColor: '#dc3545',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontSize: '12px'
+                            }}
+                            title="この対戦記録を削除"
+                          >
+                            削除
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
