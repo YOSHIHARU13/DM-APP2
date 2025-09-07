@@ -7,7 +7,7 @@ interface DeckDetailWithDeleteProps extends DeckDetailProps {
   onBattleDelete?: (battleId: string) => void;
 }
 
-// Eloレーティング計算（DeckListと同じ関数）
+// Eloレーティング計算
 const calculateEloRating = (currentRating: number, opponentRating: number, isWin: boolean, kFactor: number = 32): number => {
   const expectedScore = 1 / (1 + Math.pow(10, (opponentRating - currentRating) / 400));
   const actualScore = isWin ? 1 : 0;
@@ -18,44 +18,70 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
   // このデッキの対戦データを取得
   const deckBattles = battles.filter(b => b.deck1Id === deck.id || b.deck2Id === deck.id);
 
-  // レート履歴計算
+  // デッキ名取得（安全版）
+  const getDeckName = (deckId: string) => {
+    const foundDeck = allDecks.find(d => d.id === deckId);
+    return foundDeck ? foundDeck.name : '不明なデッキ';
+  };
+
+  // レート履歴計算（エラーハンドリング強化）
   const calculateRatingHistory = () => {
-    const ratingHistory: {date: Date, rating: number, opponent: string, result: string}[] = [];
-    let currentRating = 1500;
-    
-    // 全デッキの初期レート
-    const allRatings: {[deckId: string]: number} = {};
-    allDecks.forEach(d => { allRatings[d.id] = 1500; });
-
-    // 時系列順にソート
-    const sortedBattles = battles.sort((a, b) => a.date.getTime() - b.date.getTime());
-    
-    sortedBattles.forEach(battle => {
-      const deck1Rating = allRatings[battle.deck1Id] || 1500;
-      const deck2Rating = allRatings[battle.deck2Id] || 1500;
-      const deck1Won = battle.deck1Wins > battle.deck2Wins;
+    try {
+      const ratingHistory: {date: Date, rating: number, opponent: string, result: string}[] = [];
       
-      // レート更新
-      allRatings[battle.deck1Id] = calculateEloRating(deck1Rating, deck2Rating, deck1Won);
-      allRatings[battle.deck2Id] = calculateEloRating(deck2Rating, deck1Rating, !deck1Won);
-      
-      // このデッキに関わる対戦の場合、履歴に追加
-      if (battle.deck1Id === deck.id || battle.deck2Id === deck.id) {
-        const isPlayer1 = battle.deck1Id === deck.id;
-        const opponentId = isPlayer1 ? battle.deck2Id : battle.deck1Id;
-        const won = isPlayer1 ? deck1Won : !deck1Won;
-        const newRating = allRatings[deck.id];
-        
-        ratingHistory.push({
-          date: battle.date,
-          rating: newRating,
-          opponent: getDeckName(opponentId),
-          result: won ? '勝利' : '敗北'
-        });
-      }
-    });
+      // 全デッキの初期レート設定（安全に）
+      const allRatings: {[deckId: string]: number} = {};
+      allDecks.forEach(d => { 
+        if (d && d.id) {
+          allRatings[d.id] = 1500; 
+        }
+      });
 
-    return ratingHistory;
+      // 時系列順にソート（日付の有効性チェック）
+      const validBattles = battles.filter(battle => 
+        battle && 
+        battle.date && 
+        battle.deck1Id && 
+        battle.deck2Id &&
+        !isNaN(battle.date.getTime())
+      );
+
+      const sortedBattles = validBattles.sort((a, b) => a.date.getTime() - b.date.getTime());
+      
+      sortedBattles.forEach(battle => {
+        try {
+          const deck1Rating = allRatings[battle.deck1Id] || 1500;
+          const deck2Rating = allRatings[battle.deck2Id] || 1500;
+          const deck1Won = (battle.deck1Wins || 0) > (battle.deck2Wins || 0);
+          
+          // レート更新
+          allRatings[battle.deck1Id] = calculateEloRating(deck1Rating, deck2Rating, deck1Won);
+          allRatings[battle.deck2Id] = calculateEloRating(deck2Rating, deck1Rating, !deck1Won);
+          
+          // このデッキに関わる対戦の場合、履歴に追加
+          if (battle.deck1Id === deck.id || battle.deck2Id === deck.id) {
+            const isPlayer1 = battle.deck1Id === deck.id;
+            const opponentId = isPlayer1 ? battle.deck2Id : battle.deck1Id;
+            const won = isPlayer1 ? deck1Won : !deck1Won;
+            const newRating = allRatings[deck.id] || 1500;
+            
+            ratingHistory.push({
+              date: battle.date,
+              rating: newRating,
+              opponent: getDeckName(opponentId),
+              result: won ? '勝利' : '敗北'
+            });
+          }
+        } catch (err) {
+          console.warn('個別戦績処理でエラー:', err, battle);
+        }
+      });
+
+      return ratingHistory;
+    } catch (error) {
+      console.error('レート履歴計算でエラー:', error);
+      return [];
+    }
   };
 
   const ratingHistory = calculateRatingHistory();
@@ -86,23 +112,27 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
     }
   };
 
-  // 対戦相手別の統計
+  // 対戦相手別の統計（安全版）
   const getOpponentStats = () => {
     const opponentStats: { [opponentId: string]: { wins: number; losses: number; battles: number } } = {};
 
     deckBattles.forEach(battle => {
-      const isPlayer1 = battle.deck1Id === deck.id;
-      const opponentId = isPlayer1 ? battle.deck2Id : battle.deck1Id;
-      const wins = isPlayer1 ? battle.deck1Wins : battle.deck2Wins;
-      const losses = isPlayer1 ? battle.deck2Wins : battle.deck1Wins;
+      try {
+        const isPlayer1 = battle.deck1Id === deck.id;
+        const opponentId = isPlayer1 ? battle.deck2Id : battle.deck1Id;
+        const wins = isPlayer1 ? (battle.deck1Wins || 0) : (battle.deck2Wins || 0);
+        const losses = isPlayer1 ? (battle.deck2Wins || 0) : (battle.deck1Wins || 0);
 
-      if (!opponentStats[opponentId]) {
-        opponentStats[opponentId] = { wins: 0, losses: 0, battles: 0 };
+        if (!opponentStats[opponentId]) {
+          opponentStats[opponentId] = { wins: 0, losses: 0, battles: 0 };
+        }
+
+        opponentStats[opponentId].wins += wins;
+        opponentStats[opponentId].losses += losses;
+        opponentStats[opponentId].battles += 1;
+      } catch (err) {
+        console.warn('対戦相手統計でエラー:', err, battle);
       }
-
-      opponentStats[opponentId].wins += wins;
-      opponentStats[opponentId].losses += losses;
-      opponentStats[opponentId].battles += 1;
     });
 
     return opponentStats;
@@ -116,7 +146,7 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
   const totalGames = totalWins + totalLosses;
   const overallWinRate = totalGames > 0 ? (totalWins / totalGames) * 100 : 0;
 
-  // 先攻・後攻統計
+  // 先攻・後攻統計（安全版）
   const getGoingFirstStats = () => {
     let goingFirstGames = 0;
     let goingFirstWins = 0;
@@ -124,16 +154,20 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
     let goingSecondWins = 0;
 
     deckBattles.forEach(battle => {
-      const isPlayer1 = battle.deck1Id === deck.id;
-      const myWins = isPlayer1 ? battle.deck1Wins : battle.deck2Wins;
-      const myGoingFirst = isPlayer1 ? battle.deck1GoingFirst : battle.deck2GoingFirst;
+      try {
+        const isPlayer1 = battle.deck1Id === deck.id;
+        const myWins = isPlayer1 ? (battle.deck1Wins || 0) : (battle.deck2Wins || 0);
+        const myGoingFirst = isPlayer1 ? (battle.deck1GoingFirst || 0) : (battle.deck2GoingFirst || 0);
 
-      if (myGoingFirst === 1) {
-        goingFirstGames++;
-        goingFirstWins += myWins;
-      } else {
-        goingSecondGames++;
-        goingSecondWins += myWins;
+        if (myGoingFirst === 1) {
+          goingFirstGames++;
+          goingFirstWins += myWins;
+        } else {
+          goingSecondGames++;
+          goingSecondWins += myWins;
+        }
+      } catch (err) {
+        console.warn('先攻後攻統計でエラー:', err, battle);
       }
     });
 
@@ -153,24 +187,24 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
 
   const goingFirstStats = getGoingFirstStats();
 
-  // デッキ名取得
-  const getDeckName = (deckId: string) => {
-    const foundDeck = allDecks.find(d => d.id === deckId);
-    return foundDeck ? foundDeck.name : '不明なデッキ';
-  };
-
   // 最近の調子（直近5戦）
   const getRecentForm = () => {
-    const recentBattles = deckBattles
-      .sort((a, b) => b.date.getTime() - a.date.getTime())
-      .slice(0, 5);
+    try {
+      const recentBattles = deckBattles
+        .filter(battle => battle && battle.date && !isNaN(battle.date.getTime()))
+        .sort((a, b) => b.date.getTime() - a.date.getTime())
+        .slice(0, 5);
 
-    return recentBattles.map(battle => {
-      const isPlayer1 = battle.deck1Id === deck.id;
-      const wins = isPlayer1 ? battle.deck1Wins : battle.deck2Wins;
-      const losses = isPlayer1 ? battle.deck2Wins : battle.deck1Wins;
-      return wins > losses ? 'W' : losses > wins ? 'L' : 'D';
-    });
+      return recentBattles.map(battle => {
+        const isPlayer1 = battle.deck1Id === deck.id;
+        const wins = isPlayer1 ? (battle.deck1Wins || 0) : (battle.deck2Wins || 0);
+        const losses = isPlayer1 ? (battle.deck2Wins || 0) : (battle.deck1Wins || 0);
+        return wins > losses ? 'W' : losses > wins ? 'L' : 'D';
+      });
+    } catch (error) {
+      console.warn('最近の調子計算でエラー:', error);
+      return [];
+    }
   };
 
   const recentForm = getRecentForm();
@@ -189,8 +223,8 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
         <div>
           <h2>{deck.name} - 詳細統計</h2>
           <p style={{ color: '#666', margin: '5px 0' }}>
-            色: {deck.colors.length > 0 ? deck.colors.join(', ') : '未設定'} | 
-            作成日: {deck.createdAt.toLocaleDateString()}
+            色: {deck.colors && deck.colors.length > 0 ? deck.colors.join(', ') : '未設定'} | 
+            作成日: {deck.createdAt ? deck.createdAt.toLocaleDateString() : '不明'}
           </p>
         </div>
         <button 
@@ -370,12 +404,12 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
             <div style={{ display: 'grid', gap: '10px' }}>
               {Object.entries(opponentStats)
                 .sort(([, a], [, b]) => {
-                  const aRate = (a.wins / (a.wins + a.losses)) * 100;
-                  const bRate = (b.wins / (b.wins + b.losses)) * 100;
+                  const aRate = a.wins + a.losses > 0 ? (a.wins / (a.wins + a.losses)) * 100 : 0;
+                  const bRate = b.wins + b.losses > 0 ? (b.wins / (b.wins + b.losses)) * 100 : 0;
                   return bRate - aRate;
                 })
                 .map(([opponentId, stats]) => {
-                  const winRate = ((stats.wins / (stats.wins + stats.losses)) * 100).toFixed(1);
+                  const winRate = stats.wins + stats.losses > 0 ? ((stats.wins / (stats.wins + stats.losses)) * 100).toFixed(1) : '0.0';
                   const isAdvantage = parseFloat(winRate) >= 60;
                   const isDisadvantage = parseFloat(winRate) <= 40;
                   
@@ -421,14 +455,15 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
             <h3>対戦履歴 (新しい順)</h3>
             <div style={{ display: 'grid', gap: '8px' }}>
               {deckBattles
+                .filter(battle => battle && battle.date && !isNaN(battle.date.getTime()))
                 .sort((a, b) => b.date.getTime() - a.date.getTime())
                 .map(battle => {
                   const isPlayer1 = battle.deck1Id === deck.id;
                   const opponentId = isPlayer1 ? battle.deck2Id : battle.deck1Id;
-                  const myWins = isPlayer1 ? battle.deck1Wins : battle.deck2Wins;
-                  const opponentWins = isPlayer1 ? battle.deck2Wins : battle.deck1Wins;
+                  const myWins = isPlayer1 ? (battle.deck1Wins || 0) : (battle.deck2Wins || 0);
+                  const opponentWins = isPlayer1 ? (battle.deck2Wins || 0) : (battle.deck1Wins || 0);
                   const won = myWins > opponentWins;
-                  const myGoingFirst = isPlayer1 ? battle.deck1GoingFirst : battle.deck2GoingFirst;
+                  const myGoingFirst = isPlayer1 ? (battle.deck1GoingFirst || 0) : (battle.deck2GoingFirst || 0);
                   const isGoingFirst = myGoingFirst === 1;
                   const opponentName = getDeckName(opponentId);
                   const battleDate = battle.date.toLocaleDateString();
