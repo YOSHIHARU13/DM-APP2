@@ -7,9 +7,60 @@ interface DeckDetailWithDeleteProps extends DeckDetailProps {
   onBattleDelete?: (battleId: string) => void;
 }
 
+// Eloレーティング計算（DeckListと同じ関数）
+const calculateEloRating = (currentRating: number, opponentRating: number, isWin: boolean, kFactor: number = 32): number => {
+  const expectedScore = 1 / (1 + Math.pow(10, (opponentRating - currentRating) / 400));
+  const actualScore = isWin ? 1 : 0;
+  return Math.round(currentRating + kFactor * (actualScore - expectedScore));
+};
+
 const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDecks, onBack, onBattleDelete }) => {
   // このデッキの対戦データを取得
   const deckBattles = battles.filter(b => b.deck1Id === deck.id || b.deck2Id === deck.id);
+
+  // レート履歴計算
+  const calculateRatingHistory = () => {
+    const ratingHistory: {date: Date, rating: number, opponent: string, result: string}[] = [];
+    let currentRating = 1500;
+    
+    // 全デッキの初期レート
+    const allRatings: {[deckId: string]: number} = {};
+    allDecks.forEach(d => { allRatings[d.id] = 1500; });
+
+    // 時系列順にソート
+    const sortedBattles = battles.sort((a, b) => a.date.getTime() - b.date.getTime());
+    
+    sortedBattles.forEach(battle => {
+      const deck1Rating = allRatings[battle.deck1Id] || 1500;
+      const deck2Rating = allRatings[battle.deck2Id] || 1500;
+      const deck1Won = battle.deck1Wins > battle.deck2Wins;
+      
+      // レート更新
+      allRatings[battle.deck1Id] = calculateEloRating(deck1Rating, deck2Rating, deck1Won);
+      allRatings[battle.deck2Id] = calculateEloRating(deck2Rating, deck1Rating, !deck1Won);
+      
+      // このデッキに関わる対戦の場合、履歴に追加
+      if (battle.deck1Id === deck.id || battle.deck2Id === deck.id) {
+        const isPlayer1 = battle.deck1Id === deck.id;
+        const opponentId = isPlayer1 ? battle.deck2Id : battle.deck1Id;
+        const won = isPlayer1 ? deck1Won : !deck1Won;
+        const newRating = allRatings[deck.id];
+        
+        ratingHistory.push({
+          date: battle.date,
+          rating: newRating,
+          opponent: getDeckName(opponentId),
+          result: won ? '勝利' : '敗北'
+        });
+      }
+    });
+
+    return ratingHistory;
+  };
+
+  const ratingHistory = calculateRatingHistory();
+  const currentRating = ratingHistory.length > 0 ? ratingHistory[ratingHistory.length - 1].rating : 1500;
+  const peakRating = ratingHistory.length > 0 ? Math.max(...ratingHistory.map(h => h.rating)) : 1500;
 
   // 対戦削除
   const handleBattleDelete = async (battleId: string, opponentName: string, battleDate: string) => {
@@ -20,12 +71,10 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
     if (!confirmed) return;
 
     try {
-      // Firestoreから削除（展開されたデータかチェック）
       if (!battleId.includes('_game_')) {
         await deleteDoc(doc(db, 'battles', battleId));
       }
       
-      // 親コンポーネントに削除を通知
       if (onBattleDelete) {
         onBattleDelete(battleId);
       }
@@ -174,7 +223,7 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
           {/* 全体統計 */}
           <div style={{ 
             display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', 
             gap: '15px', 
             marginBottom: '30px' 
           }}>
@@ -195,6 +244,21 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
 
             <div style={{ 
               padding: '15px', 
+              backgroundColor: '#fff3e0', 
+              borderRadius: '8px',
+              textAlign: 'center'
+            }}>
+              <h4 style={{ margin: '0 0 5px 0', color: '#f57c00' }}>現在レート</h4>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f57c00' }}>
+                {currentRating}
+              </div>
+              <div style={{ fontSize: '14px', color: '#666' }}>
+                最高: {peakRating}
+              </div>
+            </div>
+
+            <div style={{ 
+              padding: '15px', 
               backgroundColor: '#e8f5e8', 
               borderRadius: '8px',
               textAlign: 'center'
@@ -210,12 +274,12 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
 
             <div style={{ 
               padding: '15px', 
-              backgroundColor: '#fff3e0', 
+              backgroundColor: '#fce4ec', 
               borderRadius: '8px',
               textAlign: 'center'
             }}>
-              <h4 style={{ margin: '0 0 5px 0', color: '#f57c00' }}>先攻時勝率</h4>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f57c00' }}>
+              <h4 style={{ margin: '0 0 5px 0', color: '#c2185b' }}>先攻時勝率</h4>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#c2185b' }}>
                 {goingFirstStats.goingFirstWinRate.toFixed(1)}%
               </div>
               <div style={{ fontSize: '14px', color: '#666' }}>
@@ -225,12 +289,12 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
 
             <div style={{ 
               padding: '15px', 
-              backgroundColor: '#fce4ec', 
+              backgroundColor: '#f3e5f5', 
               borderRadius: '8px',
               textAlign: 'center'
             }}>
-              <h4 style={{ margin: '0 0 5px 0', color: '#c2185b' }}>後攻時勝率</h4>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#c2185b' }}>
+              <h4 style={{ margin: '0 0 5px 0', color: '#7b1fa2' }}>後攻時勝率</h4>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#7b1fa2' }}>
                 {goingFirstStats.goingSecondWinRate.toFixed(1)}%
               </div>
               <div style={{ fontSize: '14px', color: '#666' }}>
@@ -240,12 +304,12 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
 
             <div style={{ 
               padding: '15px', 
-              backgroundColor: '#f3e5f5', 
+              backgroundColor: '#e0f2f1', 
               borderRadius: '8px',
               textAlign: 'center'
             }}>
-              <h4 style={{ margin: '0 0 5px 0', color: '#7b1fa2' }}>最近の調子</h4>
-              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#7b1fa2', letterSpacing: '2px' }}>
+              <h4 style={{ margin: '0 0 5px 0', color: '#00695c' }}>最近の調子</h4>
+              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#00695c', letterSpacing: '2px' }}>
                 {recentForm.join('') || '-'}
               </div>
               <div style={{ fontSize: '14px', color: '#666' }}>
@@ -253,6 +317,52 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
               </div>
             </div>
           </div>
+
+          {/* レート履歴 */}
+          {ratingHistory.length > 0 && (
+            <div style={{ marginBottom: '30px' }}>
+              <h3>レート履歴</h3>
+              <div style={{ 
+                maxHeight: '200px', 
+                overflowY: 'auto', 
+                border: '1px solid #ddd', 
+                borderRadius: '6px',
+                backgroundColor: 'white'
+              }}>
+                {ratingHistory.slice(-10).reverse().map((history, index) => (
+                  <div key={index} style={{ 
+                    padding: '8px 12px', 
+                    borderBottom: index < 9 ? '1px solid #eee' : 'none',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <div>
+                      <span style={{ fontWeight: 'bold' }}>vs {history.opponent}</span>
+                      <span style={{ 
+                        marginLeft: '10px',
+                        padding: '2px 6px',
+                        borderRadius: '10px',
+                        fontSize: '12px',
+                        backgroundColor: history.result === '勝利' ? '#4caf50' : '#f44336',
+                        color: 'white'
+                      }}>
+                        {history.result}
+                      </span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontWeight: 'bold', color: '#1976d2' }}>
+                        {history.rating}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#666' }}>
+                        {history.date.toLocaleDateString()}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* 対戦相手別統計 */}
           <div style={{ marginBottom: '30px' }}>
