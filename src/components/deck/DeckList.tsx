@@ -17,15 +17,192 @@ import BattleForm from '../battle/BattleForm';
 import DeckDetail from './DeckDetail';
 import Analysis from '../analysis/Analysis';
 
+// Eloレーティング計算
+const calculateEloRating = (currentRating: number, opponentRating: number, isWin: boolean, kFactor: number = 32): number => {
+  const expectedScore = 1 / (1 + Math.pow(10, (opponentRating - currentRating) / 400));
+  const actualScore = isWin ? 1 : 0;
+  return Math.round(currentRating + kFactor * (actualScore - expectedScore));
+};
+
 const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [battles, setBattles] = useState<Battle[]>([]);
+  const [deckRatings, setDeckRatings] = useState<{[deckId: string]: number}>({});
   const [showDeckForm, setShowDeckForm] = useState<boolean>(false);
   const [showBattleForm, setShowBattleForm] = useState<boolean>(false);
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null);
   const [showAnalysis, setShowAnalysis] = useState<boolean>(false);
-  const [sortBy, setSortBy] = useState<'name' | 'winRate' | 'normalizedWinRate' | 'created'>('name');
+  const [sortBy, setSortBy] = useState<'name' | 'winRate' | 'normalizedWinRate' | 'rating' | 'created'>('name');
   const [loading, setLoading] = useState<boolean>(true);
+  const [migrationStatus, setMigrationStatus] = useState<string>('');
+
+  // 全体環境プロジェクトを検索
+  const findGlobalProject = async (userId: string) => {
+    const projectsRef = collection(db, 'projects');
+    const globalQuery = query(projectsRef, where('userId', '==', userId), where('name', '==', '全体環境'));
+    const snapshot = await getDocs(globalQuery);
+    return snapshot.empty ? null : { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+  };
+
+  // 全体環境にデッキを作成/取得
+  const ensureDeckInGlobal = async (deckName: string, colors: string[], globalProjectId: string): Promise<string> => {
+    // 既存のデッキを検索
+    const globalDecksQuery = query(
+      collection(db, 'decks'), 
+      where('projectId', '==', globalProjectId),
+      where('name', '==', deckName)
+    );
+    const existingDeck = await getDocs(globalDecksQuery);
+    
+    if (!existingDeck.empty) {
+      return existingDeck.docs[0].id;
+    }
+
+    // デッキが存在しない場合は作成
+    const newDeckData = {
+      name: deckName,
+      colors: colors,
+      createdAt: new Date(),
+      projectId: globalProjectId
+    };
+    
+    const docRef = await addDoc(collection(db, 'decks'), newDeckData);
+    console.log(`全体環境にデッキ「${deckName}」を作成しました`);
+    return docRef.id;
+  };
+
+  // 既存戦績の全体環境への移行
+  const migrateExistingData = async () => {
+    if (project.name === '全体環境') return;
+
+    try {
+      setMigrationStatus('既存戦績を全体環境に移行中...');
+      
+      const globalProject = await findGlobalProject(project.userId);
+      if (!globalProject) {
+        console.log('全体環境プロジェクトが見つかりません');
+        return;
+      }
+
+      // 全ユーザーの全プロジェクトから戦績を取得
+      const allProjectsQuery = query(collection(db, 'projects'), where('userId', '==', project.userId));
+      const allProjectsSnapshot = await getDocs(allProjectsQuery);
+      
+      const migrationBatch = writeBatch(db);
+      let migratedCount = 0;
+
+      for (const projectDoc of allProjectsSnapshot.docs) {
+        const currentProjectId = projectDoc.id;
+        const currentProjectData = projectDoc.data();
+        
+        // 全体環境は除外
+        if (currentProjectData.name === '全体環境') continue;
+
+        // このプロジェクトの全デッキを取得
+        const projectDecksQuery = query(collection(db, 'decks'), where('projectId', '==', currentProjectId));
+        const projectDecksSnapshot = await getDocs(projectDecksQuery);
+        
+        const projectDecks: {[id: string]: {name: string, colors: string[]}} = {};
+        projectDecksSnapshot.forEach(doc => {
+          const data = doc.data();
+          projectDecks[doc.id] = {
+            name: data.name,
+            colors: data.colors || []
+          };
+        });
+
+        // このプロジェクトの全戦績を取得
+        const projectBattlesQuery = query(collection(db, 'battles'), where('projectId', '==', currentProjectId));
+        const projectBattlesSnapshot = await getDocs(projectBattlesQuery);
+
+        // 既に全体環境に移行済みかチェック
+        const globalBattlesQuery = query(
+          collection(db, 'battles'), 
+          where('projectId', '==', globalProject.id)
+        );
+        const existingGlobalBattles = await getDocs(globalBattlesQuery);
+        const existingBattleKeys = new Set();
+        
+        existingGlobalBattles.forEach(doc => {
+          const data = doc.data();
+          const key = `${data.deck1Id}-${data.deck2Id}-${data.date?.toMillis()}`;
+          existingBattleKeys.add(key);
+        });
+
+        for (const battleDoc of projectBattlesSnapshot.docs) {
+          const battleData = battleDoc.data();
+          
+          // 重複チェック用のキー生成
+          const battleKey = `${battleData.deck1Id}-${battleData.deck2Id}-${battleData.date?.toMillis()}`;
+          
+          // 既に移行済みの場合はスキップ
+          if (existingBattleKeys.has(battleKey)) {
+            continue;
+          }
+
+          const deck1Info = projectDecks[battleData.deck1Id];
+          const deck2Info = projectDecks[battleData.deck2Id];
+          
+          if (!deck1Info || !deck2Info) continue;
+
+          // 全体環境でのデッキIDを取得/作成
+          const globalDeck1Id = await ensureDeckInGlobal(deck1Info.name, deck1Info.colors, globalProject.id);
+          const globalDeck2Id = await ensureDeckInGlobal(deck2Info.name, deck2Info.colors, globalProject.id);
+
+          // 全体環境に戦績を追加
+          const globalBattleRef = doc(collection(db, 'battles'));
+          migrationBatch.set(globalBattleRef, {
+            deck1Id: globalDeck1Id,
+            deck2Id: globalDeck2Id,
+            deck1Wins: battleData.deck1Wins || 0,
+            deck2Wins: battleData.deck2Wins || 0,
+            deck1GoingFirst: battleData.deck1GoingFirst || 0,
+            deck2GoingFirst: battleData.deck2GoingFirst || 0,
+            memo: battleData.memo || '',
+            date: battleData.date || new Date(),
+            projectId: globalProject.id
+          });
+
+          migratedCount++;
+        }
+      }
+
+      if (migratedCount > 0) {
+        await migrationBatch.commit();
+        console.log(`${migratedCount}件の戦績を全体環境に移行しました`);
+      }
+
+      setMigrationStatus('');
+    } catch (error) {
+      console.error('データ移行に失敗:', error);
+      setMigrationStatus('');
+    }
+  };
+
+  // レーティング初期化（時系列順に全戦績を処理）
+  const initializeDeckRatings = (battles: Battle[], decks: Deck[]) => {
+    const ratings: {[deckId: string]: number} = {};
+    
+    // 全デッキを1500で初期化
+    decks.forEach(deck => {
+      ratings[deck.id] = 1500;
+    });
+
+    // 時系列順に戦績を処理してレーティング更新
+    const sortedBattles = battles.sort((a, b) => a.date.getTime() - b.date.getTime());
+    
+    sortedBattles.forEach(battle => {
+      const deck1Rating = ratings[battle.deck1Id] || 1500;
+      const deck2Rating = ratings[battle.deck2Id] || 1500;
+      
+      const deck1Won = battle.deck1Wins > battle.deck2Wins;
+      
+      ratings[battle.deck1Id] = calculateEloRating(deck1Rating, deck2Rating, deck1Won);
+      ratings[battle.deck2Id] = calculateEloRating(deck2Rating, deck1Rating, !deck1Won);
+    });
+
+    return ratings;
+  };
 
   // Firestoreからデータ読み込み
   useEffect(() => {
@@ -42,7 +219,6 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
         decksSnapshot.forEach((docSnap) => {
           const data = docSnap.data() as any;
 
-          // createdAt を Date に統一
           let createdAt: Date;
           if (data.createdAt instanceof Timestamp) {
             createdAt = data.createdAt.toDate();
@@ -70,7 +246,6 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
         battlesSnapshot.forEach((docSnap) => {
           const data = docSnap.data() as any;
 
-          // date を Date に統一
           let date: Date;
           if (data.date instanceof Timestamp) {
             date = data.date.toDate();
@@ -80,21 +255,17 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
             date = new Date();
           }
 
-          // 新旧データ形式の判定を修正
           const deck1Wins = data.deck1Wins ?? 0;
           const deck2Wins = data.deck2Wins ?? 0;
           const deck1GoingFirst = data.deck1GoingFirst ?? 0;
           const deck2GoingFirst = data.deck2GoingFirst ?? 0;
           
-          // 古いデータ形式の判定：勝利数が1より大きい、または先攻回数の合計が1より大きい場合
           const isOldFormat = (deck1Wins > 1 || deck2Wins > 1) || 
                               (deck1GoingFirst + deck2GoingFirst > 1);
 
           if (isOldFormat) {
-            // 古いデータ形式：集計データを個別戦績に展開
             const totalGames = deck1Wins + deck2Wins;
             
-            // 先攻率を基に個別戦績を推定生成
             for (let i = 0; i < totalGames; i++) {
               const isDeck1Win = i < deck1Wins;
               const isDeck1GoingFirst = i < deck1GoingFirst;
@@ -108,12 +279,11 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
                 deck1GoingFirst: isDeck1GoingFirst ? 1 : 0,
                 deck2GoingFirst: isDeck1GoingFirst ? 0 : 1,
                 memo: data.memo ?? '',
-                date: new Date(date.getTime() + i * 1000), // 少しずつ時間をずらす
+                date: new Date(date.getTime() + i * 1000),
                 projectId: data.projectId ?? ''
               });
             }
           } else {
-            // 新しいデータ形式：1戦ずつのデータ
             loadedBattles.push({
               id: docSnap.id,
               deck1Id: data.deck1Id ?? '',
@@ -131,6 +301,14 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
 
         setDecks(loadedDecks);
         setBattles(loadedBattles);
+        
+        // レーティング計算（既存戦績も含む）
+        const ratings = initializeDeckRatings(loadedBattles, loadedDecks);
+        setDeckRatings(ratings);
+
+        // 既存戦績の移行（初回のみ）
+        await migrateExistingData();
+
       } catch (error) {
         console.error('データの読み込みに失敗:', error);
         alert('データの読み込みに失敗しました');
@@ -142,7 +320,7 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
     loadData();
   }, [project.id]);
 
-  // デッキ追加
+  // デッキ追加（全体環境にも自動追加）
   const handleDeckAdd = async (newDeck: Deck) => {
     try {
       const deckData = {
@@ -153,16 +331,20 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
       };
 
       const docRef = await addDoc(collection(db, 'decks'), deckData);
+      const deckWithId = { ...newDeck, id: docRef.id };
 
-      const deckWithId = {
-        ...newDeck,
-        id: docRef.id
-      };
+      // 全体環境にも同じデッキを追加
+      if (project.name !== '全体環境') {
+        const globalProject = await findGlobalProject(project.userId);
+        if (globalProject) {
+          await ensureDeckInGlobal(newDeck.name, newDeck.colors, globalProject.id);
+        }
+      }
 
       setDecks(prev => [...prev, deckWithId]);
+      setDeckRatings(prev => ({ ...prev, [docRef.id]: 1500 }));
       setShowDeckForm(false);
 
-      console.log('デッキが保存されました:', docRef.id);
     } catch (error) {
       console.error('デッキの保存に失敗:', error);
       alert('デッキの保存に失敗しました');
@@ -174,25 +356,25 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
     if (window.confirm('このデッキを削除しますか？関連する対戦データも削除されます。')) {
       try {
         const batch = writeBatch(db);
-
-        // デッキを削除
         batch.delete(doc(db, 'decks', deckId));
 
-        // 関連する対戦データを削除
         const relatedBattles = battles.filter(b => b.deck1Id === deckId || b.deck2Id === deckId);
         relatedBattles.forEach(battle => {
-          if (!battle.id.includes('_game_')) { // 元のドキュメントのみ削除
+          if (!battle.id.includes('_game_')) {
             batch.delete(doc(db, 'battles', battle.id));
           }
         });
 
         await batch.commit();
 
-        // ローカルステートを更新
         setDecks(prev => prev.filter(d => d.id !== deckId));
         setBattles(prev => prev.filter(b => b.deck1Id !== deckId && b.deck2Id !== deckId));
+        setDeckRatings(prev => {
+          const newRatings = { ...prev };
+          delete newRatings[deckId];
+          return newRatings;
+        });
 
-        console.log('デッキと関連データが削除されました:', deckId);
       } catch (error) {
         console.error('デッキの削除に失敗:', error);
         alert('デッキの削除に失敗しました');
@@ -200,45 +382,83 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
     }
   };
 
-  // 対戦追加（1戦ずつ）
+  // 対戦追加（全体環境自動反映 + レート更新）
   const handleBattleAdd = async (newBattle: Battle) => {
     try {
-      // 1戦ずつのデータとして保存
+      // 1. 現在のプロジェクトに保存
       const battleData = {
         deck1Id: newBattle.deck1Id,
         deck2Id: newBattle.deck2Id,
-        deck1Wins: newBattle.deck1Wins, // 1 or 0
-        deck2Wins: newBattle.deck2Wins, // 1 or 0
-        deck1GoingFirst: newBattle.deck1GoingFirst, // 1 or 0
-        deck2GoingFirst: newBattle.deck2GoingFirst, // 1 or 0
+        deck1Wins: newBattle.deck1Wins,
+        deck2Wins: newBattle.deck2Wins,
+        deck1GoingFirst: newBattle.deck1GoingFirst,
+        deck2GoingFirst: newBattle.deck2GoingFirst,
         memo: newBattle.memo,
         date: newBattle.date,
         projectId: newBattle.projectId
       };
 
       const docRef = await addDoc(collection(db, 'battles'), battleData);
+      const battleWithId = { ...newBattle, id: docRef.id };
 
-      const battleWithId = {
-        ...newBattle,
-        id: docRef.id
-      };
+      // 2. 全体環境にも自動保存（全体環境以外の場合）
+      if (project.name !== '全体環境') {
+        const globalProject = await findGlobalProject(project.userId);
+        if (globalProject) {
+          const deck1Name = decks.find(d => d.id === newBattle.deck1Id)?.name;
+          const deck2Name = decks.find(d => d.id === newBattle.deck2Id)?.name;
+          const deck1Colors = decks.find(d => d.id === newBattle.deck1Id)?.colors || [];
+          const deck2Colors = decks.find(d => d.id === newBattle.deck2Id)?.colors || [];
+          
+          if (deck1Name && deck2Name) {
+            const globalDeck1Id = await ensureDeckInGlobal(deck1Name, deck1Colors, globalProject.id);
+            const globalDeck2Id = await ensureDeckInGlobal(deck2Name, deck2Colors, globalProject.id);
 
+            const globalBattleData = {
+              ...battleData,
+              deck1Id: globalDeck1Id,
+              deck2Id: globalDeck2Id,
+              projectId: globalProject.id
+            };
+            await addDoc(collection(db, 'battles'), globalBattleData);
+            console.log('全体環境にも戦績を保存しました');
+          }
+        }
+      }
+
+      // 3. ローカル状態更新
       setBattles(prev => [...prev, battleWithId]);
-      // setShowBattleForm(false); を削除 - BattleForm側で制御
 
-      console.log('対戦結果が保存されました:', docRef.id);
+      // 4. レーティング更新
+      const deck1Rating = deckRatings[newBattle.deck1Id] || 1500;
+      const deck2Rating = deckRatings[newBattle.deck2Id] || 1500;
+      const deck1Won = newBattle.deck1Wins > newBattle.deck2Wins;
+
+      const newDeck1Rating = calculateEloRating(deck1Rating, deck2Rating, deck1Won);
+      const newDeck2Rating = calculateEloRating(deck2Rating, deck1Rating, !deck1Won);
+
+      setDeckRatings(prev => ({
+        ...prev,
+        [newBattle.deck1Id]: newDeck1Rating,
+        [newBattle.deck2Id]: newDeck2Rating
+      }));
+
     } catch (error) {
       console.error('対戦結果の保存に失敗:', error);
       alert('対戦結果の保存に失敗しました');
     }
   };
 
-  // 対戦削除（DeckDetailから呼ばれる）
+  // 対戦削除（レート再計算含む）
   const handleBattleDelete = (battleId: string) => {
     setBattles(prev => prev.filter(b => b.id !== battleId));
+    // レーティング再計算
+    const updatedBattles = battles.filter(b => b.id !== battleId);
+    const newRatings = initializeDeckRatings(updatedBattles, decks);
+    setDeckRatings(newRatings);
   };
 
-  // 勝率計算（正確な先攻後攻統計）
+  // 勝率計算（レート含む）
   const getDeckWinRate = (deckId: string) => {
     const deckBattles = battles.filter(b => b.deck1Id === deckId || b.deck2Id === deckId);
     if (deckBattles.length === 0) return {
@@ -249,7 +469,8 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
       normalizedWinRate: 0,
       goingFirstRate: 0,
       goingFirstWinRate: 0,
-      goingSecondWinRate: 0
+      goingSecondWinRate: 0,
+      rating: deckRatings[deckId] || 1500
     };
 
     let wins = 0;
@@ -270,7 +491,6 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
       wins += myWins;
       losses += myLosses;
 
-      // 先攻後攻の正確な統計
       if (myGoingFirst === 1) {
         goingFirstGames++;
         goingFirstWins += myWins;
@@ -279,7 +499,6 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
         goingSecondWins += myWins;
       }
 
-      // 対戦相手別統計
       if (!opponentStats[opponentId]) {
         opponentStats[opponentId] = { wins: 0, losses: 0 };
       }
@@ -287,7 +506,6 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
       opponentStats[opponentId].losses += myLosses;
     });
 
-    // 均一化勝率計算
     const opponentWinRates = Object.values(opponentStats).map(stats => {
       const total = stats.wins + stats.losses;
       return total > 0 ? (stats.wins / total) * 100 : 0;
@@ -312,11 +530,12 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
       normalizedWinRate,
       goingFirstRate,
       goingFirstWinRate,
-      goingSecondWinRate
+      goingSecondWinRate,
+      rating: deckRatings[deckId] || 1500
     };
   };
 
-  // ソート機能
+  // ソート機能（レート追加）
   const getSortedDecks = () => {
     const sortedDecks = [...decks];
 
@@ -325,6 +544,8 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
         return sortedDecks.sort((a, b) => getDeckWinRate(b.id).winRate - getDeckWinRate(a.id).winRate);
       case 'normalizedWinRate':
         return sortedDecks.sort((a, b) => getDeckWinRate(b.id).normalizedWinRate - getDeckWinRate(a.id).normalizedWinRate);
+      case 'rating':
+        return sortedDecks.sort((a, b) => getDeckWinRate(b.id).rating - getDeckWinRate(a.id).rating);
       case 'created':
         return sortedDecks.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       case 'name':
@@ -337,11 +558,11 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
     return (
       <div style={{ padding: '20px', textAlign: 'center' }}>
         <p>データを読み込み中...</p>
+        {migrationStatus && <p style={{ color: '#28a745' }}>{migrationStatus}</p>}
       </div>
     );
   }
 
-  // 詳細画面表示中
   if (selectedDeck) {
     return (
       <DeckDetail
@@ -354,7 +575,6 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
     );
   }
 
-  // 分析画面表示中
   if (showAnalysis) {
     return (
       <Analysis
@@ -380,6 +600,11 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
         <div>
           <h2>{project.name}</h2>
           <p style={{ color: '#666', margin: '5px 0' }}>{project.description}</p>
+          {project.name !== '全体環境' && (
+            <p style={{ color: '#28a745', fontSize: '14px', margin: '5px 0' }}>
+              ※ この環境での戦績は自動的に「全体環境」にも反映されます
+            </p>
+          )}
         </div>
         <button
           onClick={onBackToProject}
@@ -476,7 +701,7 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
           <label style={{ marginRight: '10px', fontWeight: 'bold' }}>並び順:</label>
           <select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as 'name' | 'winRate' | 'normalizedWinRate' | 'created')}
+            onChange={(e) => setSortBy(e.target.value as 'name' | 'winRate' | 'normalizedWinRate' | 'rating' | 'created')}
             style={{
               padding: '5px 10px',
               border: '1px solid #ddd',
@@ -486,6 +711,7 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
             <option value="name">名前順</option>
             <option value="winRate">通常勝率順</option>
             <option value="normalizedWinRate">均一化勝率順</option>
+            <option value="rating">レート順</option>
             <option value="created">作成日順</option>
           </select>
         </div>
@@ -522,16 +748,28 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
                       <h4 style={{ margin: '0 0 8px 0', color: '#333' }}>
                         {deck.name}
                         {stats.totalGames > 0 && (
-                          <span style={{
-                            marginLeft: '10px',
-                            padding: '2px 8px',
-                            backgroundColor: '#e9ecef',
-                            borderRadius: '12px',
-                            fontSize: '12px',
-                            color: '#495057'
-                          }}>
-                            通常: {stats.winRate.toFixed(1)}% | 均一: {stats.normalizedWinRate.toFixed(1)}%
-                          </span>
+                          <>
+                            <span style={{
+                              marginLeft: '10px',
+                              padding: '2px 8px',
+                              backgroundColor: '#e9ecef',
+                              borderRadius: '12px',
+                              fontSize: '12px',
+                              color: '#495057'
+                            }}>
+                              勝率: {stats.winRate.toFixed(1)}%
+                            </span>
+                            <span style={{
+                              marginLeft: '5px',
+                              padding: '2px 8px',
+                              backgroundColor: '#007bff',
+                              borderRadius: '12px',
+                              fontSize: '12px',
+                              color: 'white'
+                            }}>
+                              レート: {stats.rating}
+                            </span>
+                          </>
                         )}
                         {stats.totalGames === 0 && (
                           <span style={{
@@ -542,7 +780,7 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
                             fontSize: '12px',
                             color: '#721c24'
                           }}>
-                            未対戦
+                            未対戦 (レート: {stats.rating})
                           </span>
                         )}
                       </h4>
@@ -629,6 +867,12 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
             <div>
               <strong>最新対戦:</strong> {battles.length > 0 ? battles[battles.length - 1].date.toLocaleDateString() : '-'}
             </div>
+            <div>
+              <strong>平均レート:</strong> {decks.length > 0 ? Math.round(Object.values(deckRatings).reduce((sum, rating) => sum + rating, 0) / Object.values(deckRatings).length) : 1500}
+            </div>
+            <div>
+              <strong>最高レート:</strong> {Object.values(deckRatings).length > 0 ? Math.max(...Object.values(deckRatings)) : 1500}
+            </div>
           </div>
         </div>
       )}
@@ -637,4 +881,3 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
 };
 
 export default DeckList;
-
