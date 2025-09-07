@@ -224,7 +224,7 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
       };
 
       setBattles(prev => [...prev, battleWithId]);
-      setShowBattleForm(false);
+      // setShowBattleForm(false); を削除 - BattleForm側で制御
 
       console.log('対戦結果が保存されました:', docRef.id);
     } catch (error) {
@@ -637,5 +637,4 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
 };
 
 export default DeckList;
-
 
