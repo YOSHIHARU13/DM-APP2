@@ -36,6 +36,7 @@ export interface Deck {
   id: string;
   name: string;
   colors: string[];
+  imageUrl?: string;  // デッキの画像URL
   createdAt: Date;
   projectId: string;
 }
