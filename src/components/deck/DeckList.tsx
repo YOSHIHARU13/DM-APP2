@@ -239,6 +239,7 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
             id: docSnap.id,
             name: data.name ?? '',
             colors: data.colors ?? [],
+            imageUrl: data.imageUrl || undefined,
             createdAt,
             projectId: data.projectId ?? ''
           });
