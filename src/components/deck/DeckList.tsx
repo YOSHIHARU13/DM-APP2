@@ -431,18 +431,10 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
 
       setBattles(prev => [...prev, battleWithId]);
 
-      const deck1Rating = deckRatings[newBattle.deck1Id] || 1500;
-      const deck2Rating = deckRatings[newBattle.deck2Id] || 1500;
-      const deck1Won = newBattle.deck1Wins > newBattle.deck2Wins;
-
-      const newDeck1Rating = calculateEloRating(deck1Rating, deck2Rating, deck1Won);
-      const newDeck2Rating = calculateEloRating(deck2Rating, deck1Rating, !deck1Won);
-
-      setDeckRatings(prev => ({
-        ...prev,
-        [newBattle.deck1Id]: newDeck1Rating,
-        [newBattle.deck2Id]: newDeck2Rating
-      }));
+      // レートを全体再計算（時系列順で正しく計算）
+      const updatedBattles = [...battles, battleWithId];
+      const newRatings = initializeDeckRatings(updatedBattles, decks);
+      setDeckRatings(newRatings);
     } catch (error) {
       console.error('対戦結果の保存に失敗:', error);
       alert('対戦結果の保存に失敗しました');
@@ -572,6 +564,11 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
         allDecks={decks}
         onBack={() => setSelectedDeck(null)}
         onBattleDelete={handleBattleDelete}
+        onDeckUpdate={(updatedDeck) => {
+          // デッキ情報を更新
+          setDecks(prev => prev.map(d => d.id === updatedDeck.id ? updatedDeck : d));
+          setSelectedDeck(updatedDeck);
+        }}
       />
     );
   }
@@ -675,6 +672,28 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
           }}
         >
           📊 詳細分析
+        </button>
+
+        <button
+          onClick={() => {
+            if (window.confirm('全デッキのレートを再計算しますか？\n\n全対戦履歴を時系列順に処理し直します。')) {
+              const newRatings = initializeDeckRatings(battles, decks);
+              setDeckRatings(newRatings);
+              alert('レートを再計算しました！');
+            }
+          }}
+          disabled={showDeckForm || showBattleForm || battles.length === 0}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: '#17a2b8',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            opacity: (showDeckForm || showBattleForm || battles.length === 0) ? 0.6 : 1
+          }}
+        >
+          🔄 レート再計算
         </button>
       </div>
 
