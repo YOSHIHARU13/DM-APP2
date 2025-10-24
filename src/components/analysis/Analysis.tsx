@@ -19,6 +19,7 @@ interface RivalryData {
 
 const Analysis: React.FC<AnalysisProps> = ({ project, decks, battles, onBack }) => {
   const [activeTab, setActiveTab] = useState<'matrix' | 'cycles' | 'rivalries' | 'rankings'>('matrix');
+  const [rankingSortType, setRankingSortType] = useState<'normal' | 'normalized'>('normal');
 
   // 相性マトリックス計算
   const calculateCompatibility = (): CompatibilityData => {
@@ -926,36 +927,32 @@ const Analysis: React.FC<AnalysisProps> = ({ project, decks, battles, onBack }) 
               padding: '4px'
             }}>
               <button
-                onClick={() => {
-                  const sorted = [...rankings].sort((a, b) => b.winRate - a.winRate);
-                  // ここでは単にソート順を変えるだけ（実装を簡略化）
-                }}
+                onClick={() => setRankingSortType('normal')}
                 style={{
                   padding: '8px 16px',
                   border: 'none',
                   borderRadius: '6px',
-                  backgroundColor: '#007bff',
-                  color: 'white',
+                  backgroundColor: rankingSortType === 'normal' ? '#007bff' : 'white',
+                  color: rankingSortType === 'normal' ? 'white' : '#007bff',
                   cursor: 'pointer',
-                  fontWeight: 'bold',
-                  marginRight: '4px'
+                  fontWeight: rankingSortType === 'normal' ? 'bold' : 'normal',
+                  marginRight: '4px',
+                  transition: 'all 0.2s'
                 }}
               >
                 通常勝率
               </button>
               <button
-                onClick={() => {
-                  const sorted = [...rankings].sort((a, b) => b.normalizedWinRate - a.normalizedWinRate);
-                  // ここでは単にソート順を変えるだけ（実装を簡略化）
-                }}
+                onClick={() => setRankingSortType('normalized')}
                 style={{
                   padding: '8px 16px',
                   border: 'none',
                   borderRadius: '6px',
-                  backgroundColor: 'white',
-                  color: '#007bff',
+                  backgroundColor: rankingSortType === 'normalized' ? '#007bff' : 'white',
+                  color: rankingSortType === 'normalized' ? 'white' : '#007bff',
                   cursor: 'pointer',
-                  fontWeight: 'normal'
+                  fontWeight: rankingSortType === 'normalized' ? 'bold' : 'normal',
+                  transition: 'all 0.2s'
                 }}
               >
                 均一化勝率
@@ -974,7 +971,12 @@ const Analysis: React.FC<AnalysisProps> = ({ project, decks, battles, onBack }) 
           </div>
 
           <div style={{ display: 'grid', gap: '10px' }}>
-            {rankings.map((ranking, index) => {
+            {[...rankings]
+              .sort((a, b) => rankingSortType === 'normal' 
+                ? b.winRate - a.winRate 
+                : b.normalizedWinRate - a.normalizedWinRate
+              )
+              .map((ranking, index) => {
               const rank = index + 1;
               const getRankColor = (rank: number) => {
                 if (rank === 1) return '#ffd700';
