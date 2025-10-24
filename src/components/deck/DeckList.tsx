@@ -745,7 +745,22 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
                   backgroundColor: 'white',
                   boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '15px' }}>
+                    {/* デッキ画像 */}
+                    {deck.imageUrl && (
+                      <img 
+                        src={deck.imageUrl} 
+                        alt={deck.name}
+                        style={{
+                          width: '60px',
+                          height: '60px',
+                          borderRadius: '8px',
+                          objectFit: 'cover',
+                          border: '2px solid #ddd',
+                          flexShrink: 0
+                        }}
+                      />
+                    )}
                     <div style={{ flex: 1 }}>
                       <h4 style={{ margin: '0 0 8px 0', color: '#333' }}>
                         {deck.name}
