@@ -335,6 +335,7 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
       const deckData = {
         name: newDeck.name,
         colors: newDeck.colors,
+        imageUrl: newDeck.imageUrl || null,
         createdAt: newDeck.createdAt,
         projectId: newDeck.projectId
       };
