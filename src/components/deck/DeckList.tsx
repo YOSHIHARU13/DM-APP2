@@ -32,7 +32,7 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
   const [showBattleForm, setShowBattleForm] = useState<boolean>(false);
   const [selectedDeck, setSelectedDeck] = useState<Deck | null>(null);
   const [showAnalysis, setShowAnalysis] = useState<boolean>(false);
-  const [sortBy, setSortBy] = useState<'name' | 'winRate' | 'normalizedWinRate' | 'rating' | 'created'>('rating'); // デフォルトをレート順に変更
+  const [sortBy, setSortBy] = useState<'name' | 'winRate' | 'normalizedWinRate' | 'rating' | 'created'>('rating');
   const [loading, setLoading] = useState<boolean>(true);
 
   // 全体環境プロジェクトを検索
@@ -183,7 +183,6 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
       // 移行完了をマーク
       markMigrationCompleted(project.userId);
       console.log('データ移行が完了しました');
-
     } catch (error) {
       console.error('データ移行に失敗:', error);
     }
@@ -320,7 +319,6 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
           // 非同期で移行処理を実行
           migrateExistingData().catch(console.error);
         }
-
       } catch (error) {
         console.error('データの読み込みに失敗:', error);
         alert('データの読み込みに失敗しました');
@@ -354,7 +352,6 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
       setDecks(prev => [...prev, deckWithId]);
       setDeckRatings(prev => ({ ...prev, [docRef.id]: 1500 }));
       setShowDeckForm(false);
-
     } catch (error) {
       console.error('デッキの保存に失敗:', error);
       alert('デッキの保存に失敗しました');
@@ -384,7 +381,6 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
           delete newRatings[deckId];
           return newRatings;
         });
-
       } catch (error) {
         console.error('デッキの削除に失敗:', error);
         alert('デッキの削除に失敗しました');
@@ -447,7 +443,6 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
         [newBattle.deck1Id]: newDeck1Rating,
         [newBattle.deck2Id]: newDeck2Rating
       }));
-
     } catch (error) {
       console.error('対戦結果の保存に失敗:', error);
       alert('対戦結果の保存に失敗しました');
@@ -457,6 +452,7 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
   // 対戦削除
   const handleBattleDelete = (battleId: string) => {
     setBattles(prev => prev.filter(b => b.id !== battleId));
+
     const updatedBattles = battles.filter(b => b.id !== battleId);
     const newRatings = initializeDeckRatings(updatedBattles, decks);
     setDeckRatings(newRatings);
@@ -465,6 +461,7 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
   // 勝率計算
   const getDeckWinRate = (deckId: string) => {
     const deckBattles = battles.filter(b => b.deck1Id === deckId || b.deck2Id === deckId);
+
     if (deckBattles.length === 0) return {
       winRate: 0,
       totalGames: 0,
@@ -483,6 +480,7 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
     let goingFirstWins = 0;
     let goingSecondGames = 0;
     let goingSecondWins = 0;
+
     const opponentStats: { [opponentId: string]: { wins: number; losses: number } } = {};
 
     deckBattles.forEach(battle => {
@@ -693,6 +691,7 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
         <BattleForm
           projectId={project.id}
           decks={decks}
+          battles={battles}  
           onBattleAdd={handleBattleAdd}
           onCancel={() => setShowBattleForm(false)}
         />
