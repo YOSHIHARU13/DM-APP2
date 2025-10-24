@@ -84,6 +84,7 @@ export interface DeckDetailProps {
   allDecks: Deck[];
   onBack: () => void;
   onBattleDelete?: (battleId: string) => void;
+  onDeckUpdate?: (updatedDeck: Deck) => void;  // デッキ情報更新用
 }
 
 // 分析画面のProps
