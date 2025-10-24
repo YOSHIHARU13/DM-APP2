@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { deleteDoc, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../../firebase';
 import { DeckDetailProps, Deck } from '../../types';
 
 interface DeckDetailWithDeleteProps extends DeckDetailProps {
@@ -17,46 +18,88 @@ const calculateEloRating = (currentRating: number, opponentRating: number, isWin
 
 const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDecks, onBack, onBattleDelete, onDeckUpdate }) => {
   const [isEditingImage, setIsEditingImage] = useState(false);
-  const [newImageUrl, setNewImageUrl] = useState(deck.imageUrl || '');
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState(deck.imageUrl || '');
+  const [uploading, setUploading] = useState(false);
 
-  // 画像URL変更時のプレビュー
-  const handleImageUrlChange = (url: string) => {
-    setNewImageUrl(url);
-    if (url.trim()) {
-      setImagePreview(url);
-    } else {
-      setImagePreview('');
+  // 画像ファイル選択時
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // 画像サイズチェック（5MB以下）
+      if (file.size > 5 * 1024 * 1024) {
+        alert('画像サイズは5MB以下にしてください');
+        return;
+      }
+
+      // 画像タイプチェック
+      if (!file.type.startsWith('image/')) {
+        alert('画像ファイルを選択してください');
+        return;
+      }
+
+      setImageFile(file);
+      
+      // プレビュー生成
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setImagePreview(event.target?.result as string);
+      };
+      reader.readAsDataURL(file);
     }
+  };
+
+  // 画像をFirebase Storageにアップロード
+  const uploadImage = async (file: File): Promise<string> => {
+    const timestamp = Date.now();
+    const filename = `deck-images/${deck.projectId}/${timestamp}_${file.name}`;
+    const storageRef = ref(storage, filename);
+    
+    await uploadBytes(storageRef, file);
+    const downloadURL = await getDownloadURL(storageRef);
+    
+    return downloadURL;
   };
 
   // 画像保存
   const handleSaveImage = async () => {
+    setUploading(true);
+
     try {
+      let imageUrl: string | undefined = deck.imageUrl;
+
+      // 新しい画像がある場合はアップロード
+      if (imageFile) {
+        imageUrl = await uploadImage(imageFile);
+      }
+
       // Firestoreを更新
       await updateDoc(doc(db, 'decks', deck.id), {
-        imageUrl: newImageUrl.trim() || null
+        imageUrl: imageUrl || null
       });
 
       // 親コンポーネントに通知
       if (onDeckUpdate) {
         onDeckUpdate({
           ...deck,
-          imageUrl: newImageUrl.trim() || undefined
+          imageUrl: imageUrl
         });
       }
 
       setIsEditingImage(false);
+      setImageFile(null);
       alert('画像を更新しました');
     } catch (error) {
       console.error('画像更新に失敗:', error);
       alert('画像の更新に失敗しました');
+    } finally {
+      setUploading(false);
     }
   };
 
   // 画像編集キャンセル
   const handleCancelEdit = () => {
-    setNewImageUrl(deck.imageUrl || '');
+    setImageFile(null);
     setImagePreview(deck.imageUrl || '');
     setIsEditingImage(false);
   };
@@ -335,37 +378,59 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
           {isEditingImage ? (
             <div style={{ marginTop: '10px' }}>
               <input
-                type="text"
-                value={newImageUrl}
-                onChange={(e) => handleImageUrlChange(e.target.value)}
-                placeholder="画像URL"
+                id="deckDetailImageInput"
+                type="file"
+                accept="image/*"
+                onChange={handleImageChange}
+                style={{ display: 'none' }}
+              />
+              <button
+                onClick={() => document.getElementById('deckDetailImageInput')?.click()}
+                disabled={uploading}
                 style={{
                   width: '100%',
                   padding: '6px',
-                  fontSize: '12px',
-                  border: '1px solid #ddd',
+                  backgroundColor: '#007bff',
+                  color: 'white',
+                  border: 'none',
                   borderRadius: '4px',
+                  cursor: uploading ? 'not-allowed' : 'pointer',
+                  fontSize: '12px',
                   marginBottom: '8px'
                 }}
-              />
+              >
+                📁 ファイルを選択
+              </button>
+              {imageFile && (
+                <div style={{ 
+                  fontSize: '11px', 
+                  color: '#28a745',
+                  marginBottom: '8px',
+                  wordBreak: 'break-all'
+                }}>
+                  ✅ {imageFile.name}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: '5px' }}>
                 <button
                   onClick={handleSaveImage}
+                  disabled={uploading}
                   style={{
                     flex: 1,
                     padding: '6px',
-                    backgroundColor: '#28a745',
+                    backgroundColor: uploading ? '#6c757d' : '#28a745',
                     color: 'white',
                     border: 'none',
                     borderRadius: '4px',
-                    cursor: 'pointer',
+                    cursor: uploading ? 'not-allowed' : 'pointer',
                     fontSize: '12px'
                   }}
                 >
-                  保存
+                  {uploading ? 'アップロード中...' : '保存'}
                 </button>
                 <button
                   onClick={handleCancelEdit}
+                  disabled={uploading}
                   style={{
                     flex: 1,
                     padding: '6px',
@@ -373,7 +438,7 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
                     color: 'white',
                     border: 'none',
                     borderRadius: '4px',
-                    cursor: 'pointer',
+                    cursor: uploading ? 'not-allowed' : 'pointer',
                     fontSize: '12px'
                   }}
                 >
