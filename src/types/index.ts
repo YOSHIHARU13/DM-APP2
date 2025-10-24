@@ -71,6 +71,7 @@ export interface DeckFormProps {
 export interface BattleFormProps {
   projectId: string;
   decks: Deck[];
+  battles?: Battle[];  // ← この行を追加しました！おすすめ対戦機能のために必要です
   onBattleAdd: (battle: Battle) => void;
   onCancel: () => void;
 }
