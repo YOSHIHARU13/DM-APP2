@@ -1,47 +1,97 @@
 import React, { useState } from 'react';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../../firebase';
 import { Deck, DeckFormProps } from '../../types';
 
 const DeckForm: React.FC<DeckFormProps> = ({ projectId, onDeckAdd, onCancel }) => {
   const [name, setName] = useState<string>('');
   const [colors, setColors] = useState<string>('');
-  const [imageUrl, setImageUrl] = useState<string>('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
+  const [uploading, setUploading] = useState<boolean>(false);
 
-  // 画像URL入力時のプレビュー
-  const handleImageUrlChange = (url: string) => {
-    setImageUrl(url);
-    if (url.trim()) {
-      setImagePreview(url);
-    } else {
-      setImagePreview('');
+  // 画像ファイル選択時
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // 画像サイズチェック（5MB以下）
+      if (file.size > 5 * 1024 * 1024) {
+        alert('画像サイズは5MB以下にしてください');
+        return;
+      }
+
+      // 画像タイプチェック
+      if (!file.type.startsWith('image/')) {
+        alert('画像ファイルを選択してください');
+        return;
+      }
+
+      setImageFile(file);
+      
+      // プレビュー生成
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setImagePreview(event.target?.result as string);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
-  const handleSubmit = () => {
+  // 画像をFirebase Storageにアップロード
+  const uploadImage = async (file: File): Promise<string> => {
+    const timestamp = Date.now();
+    const filename = `deck-images/${projectId}/${timestamp}_${file.name}`;
+    const storageRef = ref(storage, filename);
+    
+    await uploadBytes(storageRef, file);
+    const downloadURL = await getDownloadURL(storageRef);
+    
+    return downloadURL;
+  };
+
+  const handleSubmit = async () => {
     if (name.trim() === '') {
       alert('デッキ名を入力してください');
       return;
     }
 
-    const colorArray = colors
-      .split(',')
-      .map(c => c.trim())
-      .filter(c => c !== '');
+    setUploading(true);
 
-    const newDeck: Deck = {
-      id: `deck_${Date.now()}`,
-      name: name.trim(),
-      colors: colorArray,
-      imageUrl: imageUrl.trim() || undefined,
-      createdAt: new Date(),
-      projectId
-    };
+    try {
+      const colorArray = colors
+        .split(',')
+        .map(c => c.trim())
+        .filter(c => c !== '');
 
-    onDeckAdd(newDeck);
-    setName('');
-    setColors('');
-    setImageUrl('');
-    setImagePreview('');
+      let imageUrl: string | undefined = undefined;
+
+      // 画像がある場合はアップロード
+      if (imageFile) {
+        imageUrl = await uploadImage(imageFile);
+      }
+
+      const newDeck: Deck = {
+        id: `deck_${Date.now()}`,
+        name: name.trim(),
+        colors: colorArray,
+        imageUrl: imageUrl,
+        createdAt: new Date(),
+        projectId
+      };
+
+      onDeckAdd(newDeck);
+      
+      // リセット
+      setName('');
+      setColors('');
+      setImageFile(null);
+      setImagePreview('');
+    } catch (error) {
+      console.error('画像アップロードに失敗:', error);
+      alert('画像のアップロードに失敗しました。もう一度試してください。');
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -55,7 +105,7 @@ const DeckForm: React.FC<DeckFormProps> = ({ projectId, onDeckAdd, onCancel }) =
       <h3>新しいデッキを追加</h3>
       
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '20px', marginBottom: '15px' }}>
-        {/* 左側：画像プレビュー */}
+        {/* 左側：画像アップロード */}
         <div>
           <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
             デッキ画像:
@@ -70,8 +120,12 @@ const DeckForm: React.FC<DeckFormProps> = ({ projectId, onDeckAdd, onCancel }) =
             alignItems: 'center',
             justifyContent: 'center',
             backgroundColor: '#f8f9fa',
-            overflow: 'hidden'
-          }}>
+            overflow: 'hidden',
+            cursor: 'pointer',
+            position: 'relative'
+          }}
+          onClick={() => document.getElementById('imageInput')?.click()}
+          >
             {imagePreview ? (
               <img 
                 src={imagePreview} 
@@ -81,18 +135,51 @@ const DeckForm: React.FC<DeckFormProps> = ({ projectId, onDeckAdd, onCancel }) =
                   height: '100%', 
                   objectFit: 'cover' 
                 }}
-                onError={() => {
-                  setImagePreview('');
-                  alert('画像の読み込みに失敗しました。URLを確認してください。');
-                }}
               />
             ) : (
               <div style={{ textAlign: 'center', color: '#999', padding: '10px' }}>
-                <div style={{ fontSize: '48px', marginBottom: '8px' }}>🖼️</div>
-                <div style={{ fontSize: '12px' }}>画像なし</div>
+                <div style={{ fontSize: '48px', marginBottom: '8px' }}>📁</div>
+                <div style={{ fontSize: '12px' }}>クリックして画像を選択</div>
               </div>
             )}
           </div>
+
+          <input
+            id="imageInput"
+            type="file"
+            accept="image/*"
+            onChange={handleImageChange}
+            style={{ display: 'none' }}
+          />
+
+          {imageFile && (
+            <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
+              ✅ {imageFile.name}
+            </div>
+          )}
+
+          {imagePreview && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setImageFile(null);
+                setImagePreview('');
+              }}
+              style={{
+                width: '100%',
+                marginTop: '8px',
+                padding: '6px',
+                backgroundColor: '#dc3545',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
+            >
+              画像を削除
+            </button>
+          )}
         </div>
 
         {/* 右側：入力フォーム */}
@@ -135,28 +222,6 @@ const DeckForm: React.FC<DeckFormProps> = ({ projectId, onDeckAdd, onCancel }) =
             />
             <small style={{ color: '#666' }}>複数の場合はカンマ区切り</small>
           </div>
-
-          <div style={{ marginBottom: '15px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-              画像URL:
-            </label>
-            <input
-              type="text"
-              value={imageUrl}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleImageUrlChange(e.target.value)}
-              placeholder="https://example.com/deck-image.jpg"
-              style={{ 
-                width: '100%', 
-                padding: '8px', 
-                fontSize: '14px', 
-                border: '1px solid #ddd', 
-                borderRadius: '4px' 
-              }}
-            />
-            <small style={{ color: '#666' }}>
-              画像のURLを貼り付けてください（省略可）
-            </small>
-          </div>
         </div>
       </div>
 
@@ -168,38 +233,40 @@ const DeckForm: React.FC<DeckFormProps> = ({ projectId, onDeckAdd, onCancel }) =
         fontSize: '13px',
         color: '#004085'
       }}>
-        💡 <strong>画像の用意方法：</strong>
+        💡 <strong>画像について：</strong>
         <ul style={{ margin: '5px 0 0 20px', paddingLeft: '0' }}>
-          <li>Google画像検索で画像を右クリック →「画像アドレスをコピー」</li>
-          <li>Imgur、Gyazoなどの画像共有サイトにアップロード</li>
-          <li>Discord、Twitterなどに投稿した画像のURLをコピー</li>
+          <li>対応形式: JPG, PNG, GIF, WebP</li>
+          <li>最大サイズ: 5MB</li>
+          <li>画像は安全にFirebaseに保存されます</li>
         </ul>
       </div>
       
       <div style={{ display: 'flex', gap: '10px' }}>
         <button 
-          onClick={handleSubmit} 
+          onClick={handleSubmit}
+          disabled={uploading}
           style={{ 
             padding: '10px 20px', 
-            backgroundColor: '#28a745', 
+            backgroundColor: uploading ? '#6c757d' : '#28a745', 
             color: 'white', 
             border: 'none', 
             borderRadius: '4px', 
-            cursor: 'pointer',
+            cursor: uploading ? 'not-allowed' : 'pointer',
             flex: 1
           }}
         >
-          追加
+          {uploading ? 'アップロード中...' : '追加'}
         </button>
         <button 
           onClick={onCancel}
+          disabled={uploading}
           style={{ 
             padding: '10px 20px', 
             backgroundColor: '#6c757d', 
             color: 'white', 
             border: 'none', 
             borderRadius: '4px', 
-            cursor: 'pointer' 
+            cursor: uploading ? 'not-allowed' : 'pointer'
           }}
         >
           キャンセル
