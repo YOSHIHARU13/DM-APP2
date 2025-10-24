@@ -1,10 +1,11 @@
-import React from 'react';
-import { deleteDoc, doc } from 'firebase/firestore';
+import React, { useState } from 'react';
+import { deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { DeckDetailProps } from '../../types';
+import { DeckDetailProps, Deck } from '../../types';
 
 interface DeckDetailWithDeleteProps extends DeckDetailProps {
   onBattleDelete?: (battleId: string) => void;
+  onDeckUpdate?: (updatedDeck: Deck) => void;
 }
 
 // Eloレーティング計算
@@ -14,7 +15,52 @@ const calculateEloRating = (currentRating: number, opponentRating: number, isWin
   return Math.round(currentRating + kFactor * (actualScore - expectedScore));
 };
 
-const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDecks, onBack, onBattleDelete }) => {
+const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDecks, onBack, onBattleDelete, onDeckUpdate }) => {
+  const [isEditingImage, setIsEditingImage] = useState(false);
+  const [newImageUrl, setNewImageUrl] = useState(deck.imageUrl || '');
+  const [imagePreview, setImagePreview] = useState(deck.imageUrl || '');
+
+  // 画像URL変更時のプレビュー
+  const handleImageUrlChange = (url: string) => {
+    setNewImageUrl(url);
+    if (url.trim()) {
+      setImagePreview(url);
+    } else {
+      setImagePreview('');
+    }
+  };
+
+  // 画像保存
+  const handleSaveImage = async () => {
+    try {
+      // Firestoreを更新
+      await updateDoc(doc(db, 'decks', deck.id), {
+        imageUrl: newImageUrl.trim() || null
+      });
+
+      // 親コンポーネントに通知
+      if (onDeckUpdate) {
+        onDeckUpdate({
+          ...deck,
+          imageUrl: newImageUrl.trim() || undefined
+        });
+      }
+
+      setIsEditingImage(false);
+      alert('画像を更新しました');
+    } catch (error) {
+      console.error('画像更新に失敗:', error);
+      alert('画像の更新に失敗しました');
+    }
+  };
+
+  // 画像編集キャンセル
+  const handleCancelEdit = () => {
+    setNewImageUrl(deck.imageUrl || '');
+    setImagePreview(deck.imageUrl || '');
+    setIsEditingImage(false);
+  };
+
   // このデッキの対戦データを取得
   const deckBattles = battles.filter(b => b.deck1Id === deck.id || b.deck2Id === deck.id);
 
@@ -199,10 +245,10 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
         const isPlayer1 = battle.deck1Id === deck.id;
         const wins = isPlayer1 ? (battle.deck1Wins || 0) : (battle.deck2Wins || 0);
         const losses = isPlayer1 ? (battle.deck2Wins || 0) : (battle.deck1Wins || 0);
-        return wins > losses ? 'W' : losses > wins ? 'L' : 'D';
+        return wins > losses ? '勝' : '敗';
       });
     } catch (error) {
-      console.warn('最近の調子計算でエラー:', error);
+      console.error('最近の調子計算でエラー:', error);
       return [];
     }
   };
@@ -212,54 +258,175 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
   return (
     <div style={{ padding: '20px' }}>
       {/* ヘッダー */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         marginBottom: '20px',
         paddingBottom: '15px',
         borderBottom: '1px solid #ddd'
       }}>
-        <div>
-          <h2>{deck.name} - 詳細統計</h2>
-          <p style={{ color: '#666', margin: '5px 0' }}>
-            色: {deck.colors && deck.colors.length > 0 ? deck.colors.join(', ') : '未設定'} | 
-            作成日: {deck.createdAt ? deck.createdAt.toLocaleDateString() : '不明'}
-          </p>
-        </div>
-        <button 
+        <h2>{deck.name} - 詳細</h2>
+        <button
           onClick={onBack}
-          style={{ 
-            padding: '8px 16px', 
-            backgroundColor: '#6c757d', 
-            color: 'white', 
-            border: 'none', 
-            borderRadius: '4px', 
-            cursor: 'pointer' 
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#6c757d',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
           }}
         >
           戻る
         </button>
       </div>
 
-      {deckBattles.length === 0 ? (
-        <div style={{ 
-          padding: '40px', 
-          textAlign: 'center', 
-          backgroundColor: '#f8f9fa', 
-          border: '1px solid #dee2e6', 
-          borderRadius: '8px' 
-        }}>
-          <p style={{ color: '#6c757d', fontSize: '18px' }}>まだ対戦データがありません。</p>
-        </div>
-      ) : (
+      {/* デッキ画像と基本情報 */}
+      <div style={{
+        border: '1px solid #ddd',
+        borderRadius: '8px',
+        padding: '20px',
+        backgroundColor: 'white',
+        marginBottom: '20px',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+        display: 'grid',
+        gridTemplateColumns: 'auto 1fr',
+        gap: '20px'
+      }}>
+        {/* 左側：画像 */}
         <div>
-          {/* 全体統計 */}
+          <div style={{
+            width: '150px',
+            height: '150px',
+            border: '2px solid #ddd',
+            borderRadius: '8px',
+            overflow: 'hidden',
+            backgroundColor: '#f8f9fa',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            {(isEditingImage ? imagePreview : deck.imageUrl) ? (
+              <img
+                src={isEditingImage ? imagePreview : deck.imageUrl}
+                alt={deck.name}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                }}
+                onError={() => {
+                  if (isEditingImage) {
+                    setImagePreview('');
+                    alert('画像の読み込みに失敗しました。URLを確認してください。');
+                  }
+                }}
+              />
+            ) : (
+              <div style={{ textAlign: 'center', color: '#999' }}>
+                <div style={{ fontSize: '48px', marginBottom: '8px' }}>🖼️</div>
+                <div style={{ fontSize: '12px' }}>画像なし</div>
+              </div>
+            )}
+          </div>
+
+          {/* 画像編集UI */}
+          {isEditingImage ? (
+            <div style={{ marginTop: '10px' }}>
+              <input
+                type="text"
+                value={newImageUrl}
+                onChange={(e) => handleImageUrlChange(e.target.value)}
+                placeholder="画像URL"
+                style={{
+                  width: '100%',
+                  padding: '6px',
+                  fontSize: '12px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  marginBottom: '8px'
+                }}
+              />
+              <div style={{ display: 'flex', gap: '5px' }}>
+                <button
+                  onClick={handleSaveImage}
+                  style={{
+                    flex: 1,
+                    padding: '6px',
+                    backgroundColor: '#28a745',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '12px'
+                  }}
+                >
+                  保存
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  style={{
+                    flex: 1,
+                    padding: '6px',
+                    backgroundColor: '#6c757d',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '12px'
+                  }}
+                >
+                  キャンセル
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsEditingImage(true)}
+              style={{
+                width: '100%',
+                marginTop: '10px',
+                padding: '6px',
+                backgroundColor: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
+            >
+              📝 画像を{deck.imageUrl ? '変更' : '追加'}
+            </button>
+          )}
+        </div>
+
+        {/* 右側：基本情報 */}
+        <div>
+          <h3 style={{ marginTop: 0 }}>基本情報</h3>
+          <div style={{ display: 'grid', gap: '10px' }}>
+            <div>
+              <strong>デッキ名:</strong> {deck.name}
+            </div>
+            <div>
+              <strong>色:</strong> {deck.colors && deck.colors.length > 0 ? deck.colors.join(', ') : '未設定'}
+            </div>
+            <div>
+              <strong>作成日:</strong> {deck.createdAt.toLocaleDateString()}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 対戦データがある場合のみ表示 */}
+      {deckBattles.length > 0 ? (
+        <div>
+          {/* 統計サマリー */}
           <div style={{ 
             display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', 
-            gap: '15px', 
-            marginBottom: '30px' 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', 
+            gap: '15px',
+            marginBottom: '30px'
           }}>
             <div style={{ 
               padding: '15px', 
@@ -267,12 +434,9 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
               borderRadius: '8px',
               textAlign: 'center'
             }}>
-              <h4 style={{ margin: '0 0 5px 0', color: '#1976d2' }}>全体勝率</h4>
+              <div style={{ fontSize: '12px', color: '#666', marginBottom: '5px' }}>現在のレート</div>
               <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#1976d2' }}>
-                {overallWinRate.toFixed(1)}%
-              </div>
-              <div style={{ fontSize: '14px', color: '#666' }}>
-                {totalWins}勝{totalLosses}敗
+                {currentRating}
               </div>
             </div>
 
@@ -282,42 +446,24 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
               borderRadius: '8px',
               textAlign: 'center'
             }}>
-              <h4 style={{ margin: '0 0 5px 0', color: '#f57c00' }}>現在レート</h4>
+              <div style={{ fontSize: '12px', color: '#666', marginBottom: '5px' }}>最高レート</div>
               <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f57c00' }}>
-                {currentRating}
-              </div>
-              <div style={{ fontSize: '14px', color: '#666' }}>
-                最高: {peakRating}
+                {peakRating}
               </div>
             </div>
 
             <div style={{ 
               padding: '15px', 
-              backgroundColor: '#e8f5e8', 
+              backgroundColor: '#e8f5e9', 
               borderRadius: '8px',
               textAlign: 'center'
             }}>
-              <h4 style={{ margin: '0 0 5px 0', color: '#388e3c' }}>先攻率</h4>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#388e3c' }}>
-                {goingFirstStats.goingFirstRate.toFixed(1)}%
+              <div style={{ fontSize: '12px', color: '#666', marginBottom: '5px' }}>全体勝率</div>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#2e7d32' }}>
+                {overallWinRate.toFixed(1)}%
               </div>
-              <div style={{ fontSize: '14px', color: '#666' }}>
-                先攻{goingFirstStats.goingFirstGames}回/後攻{goingFirstStats.goingSecondGames}回
-              </div>
-            </div>
-
-            <div style={{ 
-              padding: '15px', 
-              backgroundColor: '#fce4ec', 
-              borderRadius: '8px',
-              textAlign: 'center'
-            }}>
-              <h4 style={{ margin: '0 0 5px 0', color: '#c2185b' }}>先攻時勝率</h4>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#c2185b' }}>
-                {goingFirstStats.goingFirstWinRate.toFixed(1)}%
-              </div>
-              <div style={{ fontSize: '14px', color: '#666' }}>
-                先攻時の成績
+              <div style={{ fontSize: '12px', color: '#666' }}>
+                {totalWins}勝{totalLosses}敗
               </div>
             </div>
 
@@ -327,27 +473,75 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
               borderRadius: '8px',
               textAlign: 'center'
             }}>
-              <h4 style={{ margin: '0 0 5px 0', color: '#7b1fa2' }}>後攻時勝率</h4>
+              <div style={{ fontSize: '12px', color: '#666', marginBottom: '5px' }}>総対戦数</div>
               <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#7b1fa2' }}>
-                {goingFirstStats.goingSecondWinRate.toFixed(1)}%
-              </div>
-              <div style={{ fontSize: '14px', color: '#666' }}>
-                後攻時の成績
+                {deckBattles.length}回
               </div>
             </div>
+          </div>
 
-            <div style={{ 
-              padding: '15px', 
-              backgroundColor: '#e0f2f1', 
-              borderRadius: '8px',
-              textAlign: 'center'
-            }}>
-              <h4 style={{ margin: '0 0 5px 0', color: '#00695c' }}>最近の調子</h4>
-              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#00695c', letterSpacing: '2px' }}>
-                {recentForm.join('') || '-'}
+          {/* 最近の調子 */}
+          {recentForm.length > 0 && (
+            <div style={{ marginBottom: '30px' }}>
+              <h3>最近の調子 (直近5戦)</h3>
+              <div style={{ display: 'flex', gap: '5px' }}>
+                {recentForm.map((result, index) => (
+                  <div key={index} style={{ 
+                    padding: '10px 15px',
+                    backgroundColor: result === '勝' ? '#4caf50' : '#f44336',
+                    color: 'white',
+                    borderRadius: '6px',
+                    fontWeight: 'bold'
+                  }}>
+                    {result}
+                  </div>
+                ))}
               </div>
-              <div style={{ fontSize: '14px', color: '#666' }}>
-                直近5戦
+            </div>
+          )}
+
+          {/* 先攻・後攻統計 */}
+          <div style={{ marginBottom: '30px' }}>
+            <h3>先攻・後攻統計</h3>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+              gap: '15px' 
+            }}>
+              <div style={{ 
+                padding: '15px', 
+                backgroundColor: '#e1f5fe', 
+                borderRadius: '8px' 
+              }}>
+                <div style={{ fontSize: '14px', color: '#666', marginBottom: '5px' }}>先攻率</div>
+                <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#0277bd' }}>
+                  {goingFirstStats.goingFirstRate.toFixed(1)}%
+                </div>
+                <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+                  {goingFirstStats.goingFirstGames}試合
+                </div>
+              </div>
+
+              <div style={{ 
+                padding: '15px', 
+                backgroundColor: '#e8f5e9', 
+                borderRadius: '8px' 
+              }}>
+                <div style={{ fontSize: '14px', color: '#666', marginBottom: '5px' }}>先攻時勝率</div>
+                <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#388e3c' }}>
+                  {goingFirstStats.goingFirstWinRate.toFixed(1)}%
+                </div>
+              </div>
+
+              <div style={{ 
+                padding: '15px', 
+                backgroundColor: '#fff3e0', 
+                borderRadius: '8px' 
+              }}>
+                <div style={{ fontSize: '14px', color: '#666', marginBottom: '5px' }}>後攻時勝率</div>
+                <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#f57c00' }}>
+                  {goingFirstStats.goingSecondWinRate.toFixed(1)}%
+                </div>
               </div>
             </div>
           </div>
@@ -547,6 +741,16 @@ const DeckDetail: React.FC<DeckDetailWithDeleteProps> = ({ deck, battles, allDec
                 })}
             </div>
           </div>
+        </div>
+      ) : (
+        <div style={{ 
+          padding: '40px', 
+          textAlign: 'center', 
+          backgroundColor: '#f8f9fa', 
+          border: '1px solid #dee2e6', 
+          borderRadius: '8px' 
+        }}>
+          <p style={{ color: '#6c757d', fontSize: '18px' }}>まだ対戦データがありません。</p>
         </div>
       )}
     </div>
