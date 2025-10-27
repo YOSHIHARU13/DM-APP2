@@ -1,18 +1,22 @@
 import React, { useState } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { Tournament, Deck, Match, Round } from '../../types';
+import { Tournament, Deck, Match, Round, Battle } from '../../types';
 
 interface TournamentDetailProps {
   tournament: Tournament;
   decks: Deck[];
   onBack: () => void;
+  onMatchComplete: (tournamentId: string, matchId: string, battle: Omit<Battle, 'id'>) => Promise<void>;
+  onTournamentComplete: (tournamentId: string) => Promise<void>;
 }
 
 export const TournamentDetail: React.FC<TournamentDetailProps> = ({
   tournament,
   decks,
   onBack,
+  onMatchComplete,
+  onTournamentComplete,
 }) => {
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [updating, setUpdating] = useState(false);
@@ -25,45 +29,23 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
   const handleMatchResult = async (match: Match, winnerId: string) => {
     setUpdating(true);
     try {
-      const updatedBracket = { ...tournament.bracket };
+      const loserId = match.deck1Id === winnerId ? match.deck2Id : match.deck1Id;
       
-      // マッチ結果を更新
-      const updateMatch = (rounds: Round[]) => {
-        for (const round of rounds) {
-          const matchIndex = round.matches.findIndex(m => m.matchId === match.matchId);
-          if (matchIndex !== -1) {
-            round.matches[matchIndex] = {
-              ...match,
-              winnerId,
-              loserId: match.deck1Id === winnerId ? match.deck2Id : match.deck1Id,
-              status: 'completed',
-            };
-            return true;
-          }
-        }
-        return false;
+      // Battle オブジェクトを作成
+      const battle: Omit<Battle, 'id'> = {
+        deck1Id: match.deck1Id!,
+        deck2Id: match.deck2Id!,
+        deck1Wins: winnerId === match.deck1Id ? 1 : 0,
+        deck2Wins: winnerId === match.deck2Id ? 1 : 0,
+        deck1GoingFirst: 0,
+        deck2GoingFirst: 0,
+        memo: `トーナメント: ${tournament.name}`,
+        date: new Date(),
+        projectId: tournament.projectId,
       };
 
-      // 勝者側ブラケットを更新
-      updateMatch(updatedBracket.winnersBracket);
-      
-      // 敗者側ブラケットを更新（ダブルエリミの場合）
-      if (updatedBracket.losersBracket) {
-        updateMatch(updatedBracket.losersBracket);
-      }
-
-      // 次のラウンドに勝者を進出させる
-      advanceWinner(updatedBracket, match, winnerId);
-
-      // トーナメント完了チェック
-      const isCompleted = checkTournamentCompletion(updatedBracket);
-      
-      await updateDoc(doc(db, 'tournaments', tournament.id), {
-        bracket: updatedBracket,
-        status: isCompleted ? 'completed' : 'in_progress',
-        winnerId: isCompleted ? winnerId : null,
-        completedAt: isCompleted ? new Date() : null,
-      });
+      // DeckList の handleMatchComplete を呼び出す
+      await onMatchComplete(tournament.id, match.matchId, battle);
 
       setSelectedMatch(null);
     } catch (error) {
@@ -72,16 +54,6 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
     } finally {
       setUpdating(false);
     }
-  };
-
-  const advanceWinner = (bracket: any, match: Match, winnerId: string) => {
-    // 実装簡略化：次ラウンドへの進出ロジック
-    // 実際は各ラウンドの試合番号から次の試合を特定して更新
-  };
-
-  const checkTournamentCompletion = (bracket: any): boolean => {
-    const finalRound = bracket.winnersBracket[bracket.winnersBracket.length - 1];
-    return finalRound.matches.every((m: Match) => m.status === 'completed');
   };
 
   const getRoundName = (roundIndex: number, totalRounds: number) => {
