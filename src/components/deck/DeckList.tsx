@@ -776,6 +776,7 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
       <TournamentDetail
         tournament={selectedTournament}
         decks={decks}
+        battles={battles}
         onBack={() => setCurrentView('tournaments')}
         onMatchComplete={handleMatchComplete}
         onTournamentComplete={handleTournamentComplete}
