@@ -141,3 +141,115 @@ const getRoundName = (roundNumber: number, matchCount: number): string => {
   if (matchCount === 4) return '準々決勝';
   return `${roundNumber}回戦`;
 };
+
+// ブラケットに試合結果を反映する関数
+export const updateBracketWithResult = (
+  bracket: TournamentBracket,
+  matchId: string,
+  winnerId: string,
+  loserId: string
+): TournamentBracket => {
+  const updatedBracket = JSON.parse(JSON.stringify(bracket)); // ディープコピー
+
+  // 勝者側ブラケットを更新
+  let matchFound = false;
+  for (const round of updatedBracket.winnersBracket) {
+    const match = round.matches.find((m: Match) => m.matchId === matchId);
+    if (match) {
+      match.winnerId = winnerId;
+      match.loserId = loserId;
+      match.status = 'completed';
+      matchFound = true;
+
+      // 次のラウンドに勝者を進める
+      advanceWinnerToNextRound(updatedBracket.winnersBracket, match, winnerId);
+      break;
+    }
+  }
+
+  // 敗者側ブラケットも確認（ダブルエリミの場合）
+  if (!matchFound && updatedBracket.losersBracket) {
+    for (const round of updatedBracket.losersBracket) {
+      const match = round.matches.find((m: Match) => m.matchId === matchId);
+      if (match) {
+        match.winnerId = winnerId;
+        match.loserId = loserId;
+        match.status = 'completed';
+
+        // 敗者側の次のラウンドに進める
+        advanceWinnerToNextRound(updatedBracket.losersBracket, match, winnerId);
+        break;
+      }
+    }
+  }
+
+  return updatedBracket;
+};
+
+// 次のラウンドに勝者を進める
+const advanceWinnerToNextRound = (rounds: Round[], currentMatch: Match, winnerId: string) => {
+  const currentRoundIndex = rounds.findIndex(r => 
+    r.matches.some(m => m.matchId === currentMatch.matchId)
+  );
+
+  if (currentRoundIndex === -1 || currentRoundIndex === rounds.length - 1) {
+    return; // 最終ラウンドまたは見つからない場合
+  }
+
+  const nextRound = rounds[currentRoundIndex + 1];
+  const currentMatchIndex = rounds[currentRoundIndex].matches.findIndex(
+    m => m.matchId === currentMatch.matchId
+  );
+
+  // 次のラウンドの対応する試合を見つける
+  const nextMatchIndex = Math.floor(currentMatchIndex / 2);
+  const nextMatch = nextRound.matches[nextMatchIndex];
+
+  if (nextMatch) {
+    // 奇数番目の試合ならdeck1に、偶数番目ならdeck2に進める
+    if (currentMatchIndex % 2 === 0) {
+      nextMatch.deck1Id = winnerId;
+    } else {
+      nextMatch.deck2Id = winnerId;
+    }
+
+    // 両方のデッキが決まったら試合を開始可能に
+    if (nextMatch.deck1Id && nextMatch.deck2Id) {
+      nextMatch.status = 'pending';
+    }
+  }
+};
+
+// 最終順位を取得する関数
+export const getFinalRankings = (bracket: TournamentBracket): {
+  winner: string | null;
+  runnerUp: string | null;
+  thirdPlace: string[];
+} => {
+  const rankings = {
+    winner: null as string | null,
+    runnerUp: null as string | null,
+    thirdPlace: [] as string[],
+  };
+
+  // 決勝戦を取得
+  const finalRound = bracket.winnersBracket[bracket.winnersBracket.length - 1];
+  const finalMatch = finalRound.matches[0];
+
+  if (finalMatch && finalMatch.status === 'completed') {
+    rankings.winner = finalMatch.winnerId;
+    rankings.runnerUp = finalMatch.loserId;
+  }
+
+  // 準決勝の敗者が3位
+  if (bracket.winnersBracket.length > 1) {
+    const semiFinalRound = bracket.winnersBracket[bracket.winnersBracket.length - 2];
+    for (const match of semiFinalRound.matches) {
+      if (match.status === 'completed' && match.loserId && match.loserId !== rankings.runnerUp) {
+        rankings.thirdPlace.push(match.loserId);
+      }
+    }
+  }
+
+  return rankings;
+};
