@@ -1,287 +1,136 @@
-import React from 'react';
-import { TournamentListProps } from '../../types';
+import React, { useState, useEffect } from 'react';
+import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { db } from '../../firebase';
+import { Tournament, Deck } from '../../types';
+import { TournamentDetail } from './TournamentDetail';
 
-const TournamentList: React.FC<TournamentListProps> = ({ 
-  tournaments, 
-  decks, 
-  onTournamentSelect,
-  onCreateNew
-}) => {
-  const getDeckById = (deckId: string | undefined) => {
-    if (!deckId) return null;
+interface TournamentListProps {
+  projectId: string;
+  decks: Deck[];
+}
+
+export const TournamentList: React.FC<TournamentListProps> = ({ projectId, decks }) => {
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const q = query(
+      collection(db, 'tournaments'),
+      where('projectId', '==', projectId),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const tournamentsData = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Tournament[];
+      
+      setTournaments(tournamentsData);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [projectId]);
+
+  const getDeckById = (deckId: string) => {
     return decks.find(d => d.id === deckId);
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return { text: '✅ 完了', color: '#28a745', bgColor: '#d4edda' };
-      case 'in_progress':
-        return { text: '⚡ 進行中', color: '#ffc107', bgColor: '#fff3cd' };
-      default:
-        return { text: '📝 準備中', color: '#007bff', bgColor: '#e7f3ff' };
-    }
+  const getFormatLabel = (format: string) => {
+    return format === 'single' ? 'シングルエリミネーション' : 'ダブルエリミネーション';
   };
 
-  const sortedTournaments = [...tournaments].sort((a, b) => 
-    b.createdAt.getTime() - a.createdAt.getTime()
-  );
+  const getMatchTypeLabel = (matchType: string) => {
+    return matchType === 'best_of_1' ? '1本勝負' : '3本中2本先取';
+  };
+
+  if (selectedTournament) {
+    return (
+      <TournamentDetail
+        tournament={selectedTournament}
+        decks={decks}
+        onBack={() => setSelectedTournament(null)}
+      />
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="text-gray-500">読み込み中...</div>
+      </div>
+    );
+  }
+
+  if (tournaments.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-gray-500">トーナメントがまだありません</p>
+        <p className="text-sm text-gray-400 mt-2">「新規トーナメント」ボタンから作成してください</p>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto' }}>
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        marginBottom: '20px'
-      }}>
-        <h2>トーナメント一覧</h2>
-        <button
-          onClick={onCreateNew}
-          style={{
-            padding: '12px 24px',
-            backgroundColor: '#28a745',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '16px',
-            fontWeight: 'bold',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <span style={{ fontSize: '20px' }}>+</span>
-          新規トーナメント
-        </button>
-      </div>
-
-      {tournaments.length === 0 ? (
-        <div style={{
-          padding: '60px 20px',
-          textAlign: 'center',
-          backgroundColor: '#f8f9fa',
-          borderRadius: '8px',
-          border: '1px solid #dee2e6'
-        }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>🏆</div>
-          <h3 style={{ color: '#6c757d', marginBottom: '8px' }}>
-            トーナメントがまだありません
-          </h3>
-          <p style={{ color: '#999', marginBottom: '20px' }}>
-            最初のトーナメントを作成して、デッキ同士を対戦させましょう！
-          </p>
-          <button
-            onClick={onCreateNew}
-            style={{
-              padding: '12px 24px',
-              backgroundColor: '#007bff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '16px',
-              fontWeight: 'bold'
-            }}
+    <div className="space-y-4">
+      {tournaments.map((tournament) => {
+        const winnerDeck = tournament.winnerId ? getDeckById(tournament.winnerId) : null;
+        
+        return (
+          <div
+            key={tournament.id}
+            onClick={() => setSelectedTournament(tournament)}
+            className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition cursor-pointer"
           >
-            トーナメントを作成
-          </button>
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gap: '15px' }}>
-          {sortedTournaments.map(tournament => {
-            const status = getStatusBadge(tournament.status);
-            const winnerDeck = getDeckById(tournament.winnerId);
-            const runnerUpDeck = getDeckById(tournament.runnerUpId);
-            
-            return (
-              <div
-                key={tournament.id}
-                onClick={() => onTournamentSelect(tournament)}
-                style={{
-                  padding: '20px',
-                  border: '1px solid #dee2e6',
-                  borderRadius: '8px',
-                  backgroundColor: 'white',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.05)';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }}
-              >
-                {/* ヘッダー行 */}
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'flex-start',
-                  marginBottom: '12px'
-                }}>
-                  <div style={{ flex: 1 }}>
-                    <h3 style={{ margin: '0 0 8px 0', fontSize: '20px' }}>
-                      {tournament.name}
-                    </h3>
-                    <div style={{ fontSize: '13px', color: '#666' }}>
-                      {tournament.createdAt.toLocaleDateString('ja-JP')} 開催
-                    </div>
-                  </div>
-                  <div style={{
-                    padding: '6px 12px',
-                    backgroundColor: status.bgColor,
-                    color: status.color,
-                    borderRadius: '12px',
-                    fontSize: '13px',
-                    fontWeight: 'bold'
-                  }}>
-                    {status.text}
-                  </div>
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex-1">
+                <h3 className="text-xl font-bold mb-2">{tournament.name}</h3>
+                <div className="flex gap-4 text-sm text-gray-600">
+                  <span>{getFormatLabel(tournament.format)}</span>
+                  <span>•</span>
+                  <span>{getMatchTypeLabel(tournament.matchType)}</span>
+                  <span>•</span>
+                  <span>{tournament.participantDeckIds.length}デッキ参加</span>
                 </div>
-
-                {/* トーナメント情報 */}
-                <div style={{ 
-                  display: 'flex', 
-                  gap: '20px',
-                  marginBottom: '15px',
-                  fontSize: '14px',
-                  color: '#666'
-                }}>
-                  <div>
-                    <span style={{ fontWeight: 'bold', color: '#495057' }}>形式: </span>
-                    {tournament.format === 'single' ? 'シングルエリミネーション' : 'ダブルエリミネーション'}
-                  </div>
-                  <div>
-                    <span style={{ fontWeight: 'bold', color: '#495057' }}>試合: </span>
-                    {tournament.matchType === 'best_of_1' ? '1本勝負' : '3本中2本先取'}
-                  </div>
-                  <div>
-                    <span style={{ fontWeight: 'bold', color: '#495057' }}>参加: </span>
-                    {tournament.participantDeckIds.length}デッキ
-                  </div>
-                </div>
-
-                {/* 優勝デッキ表示 */}
-                {tournament.status === 'completed' && winnerDeck && (
-                  <div style={{
-                    padding: '12px',
-                    backgroundColor: '#fff8e1',
-                    borderRadius: '6px',
-                    border: '1px solid #ffd54f'
-                  }}>
-                    <div style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '12px'
-                    }}>
-                      <span style={{ fontSize: '24px' }}>🏆</span>
-                      {winnerDeck.imageUrl && (
-                        <img 
-                          src={winnerDeck.imageUrl}
-                          alt={winnerDeck.name}
-                          style={{
-                            width: '50px',
-                            height: '50px',
-                            objectFit: 'cover',
-                            borderRadius: '6px',
-                            border: '2px solid #ffd54f'
-                          }}
-                        />
-                      )}
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#f57f17' }}>
-                          優勝: {winnerDeck.name}
-                        </div>
-                        <div style={{ fontSize: '12px', color: '#666' }}>
-                          {winnerDeck.colors.join(', ')}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 準優勝 */}
-                    {runnerUpDeck && (
-                      <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '12px',
-                        marginTop: '10px',
-                        paddingTop: '10px',
-                        borderTop: '1px solid #ffe082'
-                      }}>
-                        <span style={{ fontSize: '20px' }}>🥈</span>
-                        {runnerUpDeck.imageUrl && (
-                          <img 
-                            src={runnerUpDeck.imageUrl}
-                            alt={runnerUpDeck.name}
-                            style={{
-                              width: '40px',
-                              height: '40px',
-                              objectFit: 'cover',
-                              borderRadius: '6px'
-                            }}
-                          />
-                        )}
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 'bold', fontSize: '14px' }}>
-                            準優勝: {runnerUpDeck.name}
-                          </div>
-                          <div style={{ fontSize: '11px', color: '#666' }}>
-                            {runnerUpDeck.colors.join(', ')}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 3位 */}
-                    {tournament.thirdPlaceIds && tournament.thirdPlaceIds.length > 0 && (
-                      <div style={{ 
-                        display: 'flex',
-                        gap: '10px',
-                        marginTop: '10px',
-                        paddingTop: '10px',
-                        borderTop: '1px solid #ffe082',
-                        flexWrap: 'wrap'
-                      }}>
-                        <span style={{ fontSize: '18px' }}>🥉</span>
-                        <div style={{ flex: 1, fontSize: '14px' }}>
-                          <span style={{ fontWeight: 'bold' }}>3位: </span>
-                          {tournament.thirdPlaceIds.map((deckId, index) => {
-                            const thirdDeck = getDeckById(deckId);
-                            return thirdDeck ? (
-                              <span key={deckId}>
-                                {index > 0 && ', '}
-                                {thirdDeck.name}
-                              </span>
-                            ) : null;
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* 進行中の場合 */}
-                {tournament.status === 'in_progress' && (
-                  <div style={{
-                    padding: '10px',
-                    backgroundColor: '#fff3cd',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    color: '#856404'
-                  }}>
-                    ⚡ トーナメント進行中...クリックして続きを見る
-                  </div>
-                )}
               </div>
-            );
-          })}
-        </div>
-      )}
+              
+              <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                tournament.status === 'completed'
+                  ? 'bg-green-100 text-green-800'
+                  : 'bg-blue-100 text-blue-800'
+              }`}>
+                {tournament.status === 'completed' ? '完了' : '進行中'}
+              </div>
+            </div>
+
+            {/* 優勝デッキ表示 */}
+            {winnerDeck && (
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">🏆</span>
+                  {winnerDeck.imageUrl && (
+                    <img
+                      src={winnerDeck.imageUrl}
+                      alt={winnerDeck.name}
+                      className="w-16 h-16 object-cover rounded"
+                    />
+                  )}
+                  <div>
+                    <div className="font-semibold text-lg">{winnerDeck.name}</div>
+                    <div className="text-sm text-gray-600">優勝</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4 text-sm text-gray-500">
+              {tournament.createdAt && new Date(tournament.createdAt.toDate()).toLocaleDateString('ja-JP')}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };
