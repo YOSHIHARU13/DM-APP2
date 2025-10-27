@@ -557,11 +557,26 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
         thirdPlaceIds: rankings.thirdPlace
       });
 
-      // デッキに称号を付与
-     const updateDeckTitle = async (deckId: string | null, rank: 1 | 2 | 3) => {
+
+     // デッキに称号を付与
+const updateDeckTitle = async (deckId: string | null, rank: 1 | 2 | 3) => {
   if (!deckId) return;  // nullなら処理しない
   const deck = decks.find(d => d.id === deckId);
   if (!deck) return;
+
+  const titles = deck.tournamentTitles || [];
+  titles.push({
+    tournamentId: tournament.id,
+    tournamentName: tournament.name,
+    rank,
+    date: new Date()
+  });
+
+  await updateDoc(doc(db, 'decks', deckId), {
+    tournamentTitles: titles
+  });
+};
+
 
   const titles = deck.tournamentTitles || [];
   titles.push({
