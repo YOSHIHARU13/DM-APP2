@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Battle, BattleFormProps } from '../../types';
 
 interface MatchupSuggestion {
@@ -7,8 +7,9 @@ interface MatchupSuggestion {
   deck1Name: string;
   deck2Name: string;
   totalGames: number;
-  reason: 'unplayed' | 'few_games' | 'losing_streak';
+  reason: 'unplayed' | 'few_games' | 'unbalanced_winrate';
   priority: number;
+  winRate?: number;
 }
 
 const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBattleAdd, onCancel }) => {
@@ -22,14 +23,24 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
 
   // 対戦データの分析
   const matchupAnalysis = useMemo(() => {
-    const analysis: Record<string, Record<string, { games: number; wins: number; losses: number }>> = {};
+    const analysis: Record<string, Record<string, { 
+      games: number; 
+      wins: number; 
+      losses: number;
+      goingFirstCount: number; // 先行回数を追加
+    }>> = {};
     
     // 初期化
     decks.forEach(deck => {
       analysis[deck.id] = {};
       decks.forEach(opponent => {
         if (deck.id !== opponent.id) {
-          analysis[deck.id][opponent.id] = { games: 0, wins: 0, losses: 0 };
+          analysis[deck.id][opponent.id] = { 
+            games: 0, 
+            wins: 0, 
+            losses: 0,
+            goingFirstCount: 0
+          };
         }
       });
     });
@@ -37,15 +48,24 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
     // 対戦データを集計
     if (battles) {
       battles.forEach(battle => {
+        // deck1の視点でのデータ
         if (analysis[battle.deck1Id] && analysis[battle.deck1Id][battle.deck2Id]) {
-          analysis[battle.deck1Id][battle.deck2Id].games += battle.deck1Wins + battle.deck2Wins;
-          analysis[battle.deck1Id][battle.deck2Id].wins += battle.deck1Wins;
-          analysis[battle.deck1Id][battle.deck2Id].losses += battle.deck2Wins;
+          analysis[battle.deck1Id][battle.deck2Id].games += 1;
+          analysis[battle.deck1Id][battle.deck2Id].wins += battle.deck1Wins || 0;
+          analysis[battle.deck1Id][battle.deck2Id].losses += battle.deck2Wins || 0;
+          if (battle.deck1GoingFirst === 1) {
+            analysis[battle.deck1Id][battle.deck2Id].goingFirstCount += 1;
+          }
         }
+        
+        // deck2の視点でのデータ
         if (analysis[battle.deck2Id] && analysis[battle.deck2Id][battle.deck1Id]) {
-          analysis[battle.deck2Id][battle.deck1Id].games += battle.deck1Wins + battle.deck2Wins;
-          analysis[battle.deck2Id][battle.deck1Id].wins += battle.deck2Wins;
-          analysis[battle.deck2Id][battle.deck1Id].losses += battle.deck1Wins;
+          analysis[battle.deck2Id][battle.deck1Id].games += 1;
+          analysis[battle.deck2Id][battle.deck1Id].wins += battle.deck2Wins || 0;
+          analysis[battle.deck2Id][battle.deck1Id].losses += battle.deck1Wins || 0;
+          if (battle.deck2GoingFirst === 1) {
+            analysis[battle.deck2Id][battle.deck1Id].goingFirstCount += 1;
+          }
         }
       });
     }
@@ -53,7 +73,7 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
     return analysis;
   }, [decks, battles]);
 
-  // おすすめ対戦の生成
+  // おすすめ対戦の生成（修正版）
   const suggestions = useMemo((): MatchupSuggestion[] => {
     const suggestions: MatchupSuggestion[] = [];
     const processed = new Set<string>();
@@ -69,90 +89,129 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
 
         const data1 = matchupAnalysis[deck1.id]?.[deck2.id];
         const data2 = matchupAnalysis[deck2.id]?.[deck1.id];
-        const totalGames = (data1?.games || 0) + (data2?.games || 0);
+        
+        // 絶対値の対戦数（各デッキ視点の対戦数は同じはず）
+        const totalGames = data1?.games || 0;
 
-        let reason: 'unplayed' | 'few_games' | 'losing_streak' | null = null;
+        let reason: 'unplayed' | 'few_games' | 'unbalanced_winrate';
         let priority = 0;
+        let winRate: number | undefined;
 
-        // 未対戦（最優先）
+        // 1. 未対戦（最優先）
         if (totalGames === 0) {
           reason = 'unplayed';
-          priority = 100;
+          priority = 1000;
         }
-        // 対戦回数が少ない（5戦未満）
+        // 2. 5戦未満（次に優先）
         else if (totalGames < 5) {
           reason = 'few_games';
-          priority = 50 - totalGames * 5; // 少ないほど優先度高
+          priority = 500 + (5 - totalGames) * 50; // 少ないほど優先度高
         }
-        // どちらかが3連敗以上している
+        // 3. 勝率が50%から離れている
         else {
-          const recentBattles = battles
-            ?.filter(b => 
-              (b.deck1Id === deck1.id && b.deck2Id === deck2.id) ||
-              (b.deck1Id === deck2.id && b.deck2Id === deck1.id)
-            )
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-            .slice(0, 5) || [];
-
-          // deck1の視点で連敗チェック
-          let deck1LosingStreak = 0;
-          for (const battle of recentBattles) {
-            if (battle.deck1Id === deck1.id && battle.deck1Wins === 0) deck1LosingStreak++;
-            else if (battle.deck2Id === deck1.id && battle.deck2Wins === 0) deck1LosingStreak++;
-            else break;
-          }
-
-          // deck2の視点で連敗チェック
-          let deck2LosingStreak = 0;
-          for (const battle of recentBattles) {
-            if (battle.deck1Id === deck2.id && battle.deck1Wins === 0) deck2LosingStreak++;
-            else if (battle.deck2Id === deck2.id && battle.deck2Wins === 0) deck2LosingStreak++;
-            else break;
-          }
-
-          if (deck1LosingStreak >= 3 || deck2LosingStreak >= 3) {
-            reason = 'losing_streak';
-            priority = 30 + Math.max(deck1LosingStreak, deck2LosingStreak);
+          const deck1Wins = data1?.wins || 0;
+          const deck1Losses = data1?.losses || 0;
+          const totalDecisions = deck1Wins + deck1Losses;
+          
+          if (totalDecisions > 0) {
+            winRate = (deck1Wins / totalDecisions) * 100;
+            const deviation = Math.abs(winRate - 50);
+            
+            reason = 'unbalanced_winrate';
+            priority = deviation * 10; // 50%から離れているほど優先度高
+          } else {
+            continue; // 勝敗データがない場合はスキップ
           }
         }
 
-        if (reason) {
-          suggestions.push({
-            deck1Id: deck1.id,
-            deck2Id: deck2.id,
-            deck1Name: deck1.name,
-            deck2Name: deck2.name,
-            totalGames,
-            reason,
-            priority
-          });
-        }
+        suggestions.push({
+          deck1Id: deck1.id,
+          deck2Id: deck2.id,
+          deck1Name: deck1.name,
+          deck2Name: deck2.name,
+          totalGames,
+          reason,
+          priority,
+          winRate
+        });
       }
     }
 
     return suggestions.sort((a, b) => b.priority - a.priority).slice(0, 5);
   }, [decks, battles, matchupAnalysis]);
 
+  // デッキ選択時に先行を自動設定（新機能）
+  useEffect(() => {
+    if (!deck1Id || !deck2Id) return;
+
+    const data1 = matchupAnalysis[deck1Id]?.[deck2Id];
+    const data2 = matchupAnalysis[deck2Id]?.[deck1Id];
+
+    if (!data1 || !data2) return;
+
+    const deck1GoingFirstCount = data1.goingFirstCount || 0;
+    const deck2GoingFirstCount = data2.goingFirstCount || 0;
+
+    // 先行回数が少ない方を先行に自動設定
+    if (deck1GoingFirstCount < deck2GoingFirstCount) {
+      setGoingFirst('deck1');
+    } else if (deck2GoingFirstCount < deck1GoingFirstCount) {
+      setGoingFirst('deck2');
+    } else {
+      // 同じ場合はリセット（手動選択に任せる）
+      setGoingFirst('');
+    }
+  }, [deck1Id, deck2Id, matchupAnalysis]);
+
   // デッキ選択時の情報表示
   const getMatchupInfo = (deckId1: string, deckId2: string) => {
     if (!deckId1 || !deckId2) return null;
     
     const data1 = matchupAnalysis[deckId1]?.[deckId2];
+    const totalGames = data1?.games || 0;
+    
+    // 先行情報も追加
+    const deck1GoingFirstCount = data1?.goingFirstCount || 0;
     const data2 = matchupAnalysis[deckId2]?.[deckId1];
-    const totalGames = (data1?.games || 0) + (data2?.games || 0);
+    const deck2GoingFirstCount = data2?.goingFirstCount || 0;
     
     if (totalGames === 0) {
-      return { type: 'unplayed', message: '未対戦の組み合わせです！' };
-    } else if (totalGames < 3) {
-      return { type: 'few', message: `対戦回数: ${totalGames}回（サンプル不足）` };
-    } else if (totalGames < 7) {
-      return { type: 'some', message: `対戦回数: ${totalGames}回` };
+      return { 
+        type: 'unplayed', 
+        message: '未対戦の組み合わせです！',
+        goingFirstInfo: null
+      };
     } else {
-      return { type: 'many', message: `対戦回数: ${totalGames}回（十分なデータ）` };
+      const goingFirstInfo = `先行回数: ${getDeckName(deckId1)}=${deck1GoingFirstCount}回 / ${getDeckName(deckId2)}=${deck2GoingFirstCount}回`;
+      
+      if (totalGames < 3) {
+        return { 
+          type: 'few', 
+          message: `対戦回数: ${totalGames}回（サンプル不足）`,
+          goingFirstInfo
+        };
+      } else if (totalGames < 7) {
+        return { 
+          type: 'some', 
+          message: `対戦回数: ${totalGames}回`,
+          goingFirstInfo
+        };
+      } else {
+        return { 
+          type: 'many', 
+          message: `対戦回数: ${totalGames}回（十分なデータ）`,
+          goingFirstInfo
+        };
+      }
     }
   };
 
   const matchupInfo = getMatchupInfo(deck1Id, deck2Id);
+
+  const getDeckName = (deckId: string) => {
+    const deck = decks.find(d => d.id === deckId);
+    return deck ? deck.name : '不明';
+  };
 
   const handleSuggestionClick = (suggestion: MatchupSuggestion) => {
     setDeck1Id(suggestion.deck1Id);
@@ -170,36 +229,19 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
     }
 
     if (type === 'all') {
-      // 対戦数が少ないペアを優先的に選出
-      const pairCandidates: Array<{ deck1: any; deck2: any; totalGames: number }> = [];
-      
-      for (let i = 0; i < decks.length; i++) {
-        for (let j = i + 1; j < decks.length; j++) {
-          const deck1 = decks[i];
-          const deck2 = decks[j];
-          
-          const data1 = matchupAnalysis[deck1.id]?.[deck2.id];
-          const data2 = matchupAnalysis[deck2.id]?.[deck1.id];
-          const totalGames = (data1?.games || 0) + (data2?.games || 0);
-          
-          pairCandidates.push({
-            deck1,
-            deck2,
-            totalGames
-          });
+      // 優先度の高いペアを選出
+      if (suggestions.length > 0) {
+        const topSuggestions = suggestions.slice(0, Math.max(1, Math.ceil(suggestions.length * 0.3)));
+        const selectedPair = topSuggestions[Math.floor(Math.random() * topSuggestions.length)];
+        setDeck1Id(selectedPair.deck1Id);
+        setDeck2Id(selectedPair.deck2Id);
+      } else {
+        // フォールバック: 完全ランダム
+        const availableDecks = decks.filter(d => d.id !== deck2Id);
+        if (availableDecks.length > 0) {
+          const randomDeck = availableDecks[Math.floor(Math.random() * availableDecks.length)];
+          setDeck1Id(randomDeck.id);
         }
-      }
-      
-      // 対戦数が少ない順にソート
-      pairCandidates.sort((a, b) => a.totalGames - b.totalGames);
-      
-      // 上位20%からランダムに選択（完全に最小だけだと毎回同じになるため）
-      const topCandidates = pairCandidates.slice(0, Math.max(1, Math.ceil(pairCandidates.length * 0.2)));
-      const selectedPair = topCandidates[Math.floor(Math.random() * topCandidates.length)];
-      
-      if (selectedPair) {
-        setDeck1Id(selectedPair.deck1.id);
-        setDeck2Id(selectedPair.deck2.id);
       }
       return;
     }
@@ -243,28 +285,27 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
       return;
     }
 
-    const newBattle: Battle = {
-      id: `battle_${Date.now()}_${Math.random()}`,
+    const newBattle: Omit<Battle, 'id'> = {
+      projectId,
       deck1Id,
       deck2Id,
       deck1Wins: winner === 'deck1' ? 1 : 0,
       deck2Wins: winner === 'deck2' ? 1 : 0,
       deck1GoingFirst: goingFirst === 'deck1' ? 1 : 0,
       deck2GoingFirst: goingFirst === 'deck2' ? 1 : 0,
-      memo: memo.trim(),
       date: new Date(),
-      projectId
+      memo: memo.trim()
     };
 
     onBattleAdd(newBattle);
 
-    // 連続入力モードの場合、フォームをリセット（デッキ選択は保持）
     if (continuousMode) {
+      // 連続モード: 勝敗と先攻のみリセット
       setWinner('');
       setGoingFirst('');
       setMemo('');
     } else {
-      // 通常モードの場合、すべてリセット
+      // 通常モード: 全てリセット
       setDeck1Id('');
       setDeck2Id('');
       setWinner('');
@@ -273,232 +314,174 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
     }
   };
 
-  const getDeckName = (deckId: string) => {
-    const deck = decks.find(d => d.id === deckId);
-    return deck ? deck.name : '';
-  };
-
-  const swapDecks = () => {
-    const temp = deck1Id;
-    setDeck1Id(deck2Id);
-    setDeck2Id(temp);
-    
-    // 勝者と先攻も入れ替え
-    if (winner === 'deck1') setWinner('deck2');
-    else if (winner === 'deck2') setWinner('deck1');
-    
-    if (goingFirst === 'deck1') setGoingFirst('deck2');
-    else if (goingFirst === 'deck2') setGoingFirst('deck1');
-  };
-
-  const getReasonLabel = (reason: string) => {
+  const getReasonText = (reason: string, winRate?: number) => {
     switch (reason) {
-      case 'unplayed': return '未対戦';
-      case 'few_games': return '対戦少';
-      case 'losing_streak': return '連敗中';
-      default: return '';
-    }
-  };
-
-  const getReasonColor = (reason: string) => {
-    switch (reason) {
-      case 'unplayed': return '#ff9800';
-      case 'few_games': return '#2196f3';
-      case 'losing_streak': return '#f44336';
-      default: return '#666';
+      case 'unplayed':
+        return '🆕 未対戦';
+      case 'few_games':
+        return '📊 対戦数少';
+      case 'unbalanced_winrate':
+        return `⚖️ 勝率偏り (${winRate?.toFixed(1)}%)`;
+      default:
+        return '';
     }
   };
 
   return (
     <div style={{ 
-      border: '1px solid #ccc', 
       padding: '20px', 
-      margin: '10px 0', 
-      borderRadius: '8px', 
-      backgroundColor: '#f9f9f9' 
+      backgroundColor: 'white', 
+      border: '1px solid #ddd', 
+      borderRadius: '8px',
+      maxWidth: '600px',
+      margin: '0 auto'
     }}>
-      <h3>対戦結果を登録（1戦ずつ）</h3>
+      <h2 style={{ marginBottom: '20px' }}>対戦結果を入力</h2>
       
-      {/* おすすめ対戦表示 */}
-      {suggestions.length > 0 && (
-        <div style={{ 
-          marginBottom: '15px',
-          padding: '15px',
-          backgroundColor: '#e3f2fd',
-          borderRadius: '8px',
-          border: '1px solid #90caf9'
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            marginBottom: '10px'
-          }}>
-            <h4 style={{ margin: 0, color: '#1976d2' }}>
-              💡 おすすめ対戦
-            </h4>
-            <button
-              onClick={() => setShowSuggestions(!showSuggestions)}
-              style={{
-                padding: '4px 12px',
-                backgroundColor: 'white',
-                border: '1px solid #90caf9',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '12px'
-              }}
-            >
-              {showSuggestions ? '閉じる' : '表示'}
-            </button>
-          </div>
-          
-          {showSuggestions && (
-            <div style={{ display: 'grid', gap: '8px' }}>
-              {suggestions.map((suggestion, index) => (
-                <div
-                  key={`${suggestion.deck1Id}-${suggestion.deck2Id}`}
-                  onClick={() => handleSuggestionClick(suggestion)}
-                  style={{
-                    padding: '12px',
-                    backgroundColor: 'white',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    border: '2px solid transparent',
-                    transition: 'all 0.2s',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = '#1976d2';
-                    e.currentTarget.style.transform = 'translateX(4px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'transparent';
-                    e.currentTarget.style.transform = 'translateX(0)';
-                  }}
-                >
-                  <div>
-                    <span style={{ fontWeight: 'bold' }}>
-                      {suggestion.deck1Name}
-                    </span>
-                    <span style={{ margin: '0 8px', color: '#666' }}>vs</span>
-                    <span style={{ fontWeight: 'bold' }}>
-                      {suggestion.deck2Name}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{
-                      padding: '2px 8px',
-                      borderRadius: '12px',
-                      fontSize: '11px',
-                      fontWeight: 'bold',
-                      backgroundColor: getReasonColor(suggestion.reason),
-                      color: 'white'
-                    }}>
-                      {getReasonLabel(suggestion.reason)}
-                    </span>
-                    {suggestion.totalGames > 0 && (
-                      <span style={{ fontSize: '12px', color: '#666' }}>
-                        {suggestion.totalGames}戦
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      
-      <div style={{ marginBottom: '15px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <button 
-          onClick={() => handleRandomSelect('suggested')}
-          disabled={suggestions.length === 0}
-          style={{ 
-            padding: '8px 16px', 
-            backgroundColor: suggestions.length > 0 ? '#2196f3' : '#ccc',
-            color: 'white', 
-            border: 'none', 
-            borderRadius: '4px', 
-            cursor: suggestions.length > 0 ? 'pointer' : 'not-allowed'
-          }}
-        >
-          ⭐ おすすめから選択
-        </button>
-
-        <button 
-          onClick={() => handleRandomSelect('all')}
-          style={{ 
-            padding: '8px 16px', 
-            backgroundColor: '#ffc107', 
-            color: '#212529', 
-            border: 'none', 
-            borderRadius: '4px', 
-            cursor: 'pointer'
-          }}
-        >
-          🎲 対戦数が少ないペアを選択
-        </button>
-        
-        <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+      {/* 連続入力モード切替 */}
+      <div style={{ marginBottom: '15px', padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
           <input
             type="checkbox"
             checked={continuousMode}
             onChange={(e) => setContinuousMode(e.target.checked)}
           />
-          連続入力モード
+          <span style={{ fontWeight: 'bold' }}>連続入力モード</span>
+          <span style={{ fontSize: '12px', color: '#666' }}>
+            （デッキ選択を保持して連続入力）
+          </span>
         </label>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '15px', marginBottom: '20px', alignItems: 'end' }}>
+      {/* おすすめ対戦の表示 */}
+      <div style={{ marginBottom: '20px' }}>
+        <button 
+          onClick={() => setShowSuggestions(!showSuggestions)}
+          style={{ 
+            width: '100%',
+            padding: '12px', 
+            backgroundColor: '#17a2b8', 
+            color: 'white', 
+            border: 'none', 
+            borderRadius: '6px', 
+            cursor: 'pointer',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px'
+          }}
+        >
+          💡 おすすめ対戦 ({suggestions.length}件)
+          <span style={{ fontSize: '14px' }}>{showSuggestions ? '▲' : '▼'}</span>
+        </button>
+
+        {showSuggestions && suggestions.length > 0 && (
+          <div style={{ 
+            marginTop: '10px', 
+            border: '1px solid #17a2b8', 
+            borderRadius: '6px',
+            overflow: 'hidden'
+          }}>
+            {suggestions.map((suggestion, index) => (
+              <div 
+                key={`${suggestion.deck1Id}-${suggestion.deck2Id}`}
+                onClick={() => handleSuggestionClick(suggestion)}
+                style={{
+                  padding: '12px',
+                  backgroundColor: index % 2 === 0 ? '#f8f9fa' : 'white',
+                  cursor: 'pointer',
+                  borderBottom: index < suggestions.length - 1 ? '1px solid #dee2e6' : 'none',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e3f2fd'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = index % 2 === 0 ? '#f8f9fa' : 'white'}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <strong>{suggestion.deck1Name}</strong> vs <strong>{suggestion.deck2Name}</strong>
+                  </div>
+                  <span style={{
+                    padding: '4px 8px',
+                    borderRadius: '12px',
+                    fontSize: '12px',
+                    backgroundColor: 
+                      suggestion.reason === 'unplayed' ? '#ff9800' :
+                      suggestion.reason === 'few_games' ? '#2196f3' :
+                      '#9c27b0',
+                    color: 'white'
+                  }}>
+                    {getReasonText(suggestion.reason, suggestion.winRate)}
+                  </span>
+                </div>
+                {suggestion.totalGames > 0 && (
+                  <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                    対戦数: {suggestion.totalGames}回
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ランダム選択ボタン群 */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: '1fr 1fr', 
+        gap: '10px', 
+        marginBottom: '20px' 
+      }}>
+        <button 
+          onClick={() => handleRandomSelect('all')}
+          style={{ 
+            padding: '10px', 
+            backgroundColor: '#6f42c1', 
+            color: 'white', 
+            border: 'none', 
+            borderRadius: '4px', 
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+        >
+          🎲 おすすめからランダム
+        </button>
+        <button 
+          onClick={() => handleRandomSelect('suggested')}
+          style={{ 
+            padding: '10px', 
+            backgroundColor: '#20c997', 
+            color: 'white', 
+            border: 'none', 
+            borderRadius: '4px', 
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+        >
+          ⭐ トップ3からランダム
+        </button>
+      </div>
+
+      {/* デッキ選択 */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
         <div>
-          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
             デッキ1:
           </label>
-          {deck1Id && decks.find(d => d.id === deck1Id)?.imageUrl && (
-            <div style={{ marginBottom: '8px' }}>
-              <img 
-                src={decks.find(d => d.id === deck1Id)?.imageUrl} 
-                alt="デッキ1"
-                style={{
-                  width: '50px',
-                  height: '50px',
-                  borderRadius: '6px',
-                  objectFit: 'cover',
-                  border: '2px solid #007bff'
-                }}
-              />
-            </div>
-          )}
-          {deck1Id && decks.find(d => d.id === deck1Id)?.imageUrl && (
-            <div style={{ marginBottom: '8px', textAlign: 'center' }}>
-              <img 
-                src={decks.find(d => d.id === deck1Id)?.imageUrl} 
-                alt={decks.find(d => d.id === deck1Id)?.name}
-                style={{
-                  width: '80px',
-                  height: '80px',
-                  borderRadius: '8px',
-                  objectFit: 'cover',
-                  border: '2px solid #007bff'
-                }}
-              />
-            </div>
-          )}
-          <select
-            value={deck1Id}
+          <select 
+            value={deck1Id} 
             onChange={(e) => setDeck1Id(e.target.value)}
             style={{ 
               width: '100%', 
               padding: '8px', 
-              fontSize: '14px', 
-              border: '1px solid #ddd', 
-              borderRadius: '4px',
-              marginBottom: '8px'
+              marginBottom: '8px',
+              fontSize: '14px',
+              border: '1px solid #ddd',
+              borderRadius: '4px'
             }}
           >
-            <option value="">デッキを選択</option>
+            <option value="">選択してください</option>
             {decks.filter(d => d.id !== deck2Id).map(deck => (
               <option key={deck.id} value={deck.id}>
                 {deck.name} ({deck.colors.join(', ')})
@@ -522,72 +505,23 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
           </button>
         </div>
 
-        <div style={{ textAlign: 'center' }}>
-          <button
-            onClick={swapDecks}
-            disabled={!deck1Id || !deck2Id}
-            style={{
-              padding: '8px',
-              backgroundColor: '#6c757d',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: deck1Id && deck2Id ? 'pointer' : 'not-allowed',
-              opacity: deck1Id && deck2Id ? 1 : 0.5
-            }}
-          >
-            ⇄
-          </button>
-          <div style={{ fontSize: '12px', marginTop: '4px' }}>入れ替え</div>
-        </div>
-
         <div>
-          <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
             デッキ2:
           </label>
-          {deck2Id && decks.find(d => d.id === deck2Id)?.imageUrl && (
-            <div style={{ marginBottom: '8px' }}>
-              <img 
-                src={decks.find(d => d.id === deck2Id)?.imageUrl} 
-                alt="デッキ2"
-                style={{
-                  width: '50px',
-                  height: '50px',
-                  borderRadius: '6px',
-                  objectFit: 'cover',
-                  border: '2px solid #007bff'
-                }}
-              />
-            </div>
-          )}
-          {deck2Id && decks.find(d => d.id === deck2Id)?.imageUrl && (
-            <div style={{ marginBottom: '8px', textAlign: 'center' }}>
-              <img 
-                src={decks.find(d => d.id === deck2Id)?.imageUrl} 
-                alt={decks.find(d => d.id === deck2Id)?.name}
-                style={{
-                  width: '80px',
-                  height: '80px',
-                  borderRadius: '8px',
-                  objectFit: 'cover',
-                  border: '2px solid #007bff'
-                }}
-              />
-            </div>
-          )}
-          <select
-            value={deck2Id}
+          <select 
+            value={deck2Id} 
             onChange={(e) => setDeck2Id(e.target.value)}
             style={{ 
               width: '100%', 
               padding: '8px', 
-              fontSize: '14px', 
-              border: '1px solid #ddd', 
-              borderRadius: '4px',
-              marginBottom: '8px'
+              marginBottom: '8px',
+              fontSize: '14px',
+              border: '1px solid #ddd',
+              borderRadius: '4px'
             }}
           >
-            <option value="">デッキを選択</option>
+            <option value="">選択してください</option>
             {decks.filter(d => d.id !== deck1Id).map(deck => (
               <option key={deck.id} value={deck.id}>
                 {deck.name} ({deck.colors.join(', ')})
@@ -612,7 +546,7 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
         </div>
       </div>
 
-      {/* 対戦情報の表示 */}
+      {/* 対戦情報の表示（先行情報も追加） */}
       {matchupInfo && (
         <div style={{
           padding: '10px',
@@ -636,6 +570,11 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
           {matchupInfo.type === 'few' && '📊 '}
           {matchupInfo.type === 'many' && '✅ '}
           {matchupInfo.message}
+          {matchupInfo.goingFirstInfo && (
+            <div style={{ fontSize: '12px', marginTop: '4px', color: '#666' }}>
+              {matchupInfo.goingFirstInfo}
+            </div>
+          )}
         </div>
       )}
 
@@ -691,10 +630,20 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
             </div>
           </div>
 
-          {/* 先攻選択 */}
+          {/* 先攻選択（自動チェック対応） */}
           <div style={{ marginBottom: '15px' }}>
             <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
               先攻:
+              {goingFirst && (
+                <span style={{ 
+                  marginLeft: '8px', 
+                  fontSize: '12px', 
+                  color: '#17a2b8',
+                  fontWeight: 'normal'
+                }}>
+                  （自動選択されました）
+                </span>
+              )}
             </label>
             <div style={{ display: 'flex', gap: '10px' }}>
               <label style={{ 
