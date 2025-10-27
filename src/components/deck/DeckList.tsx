@@ -17,9 +17,9 @@ import DeckForm from './DeckForm';
 import BattleForm from '../battle/BattleForm';
 import DeckDetail from './DeckDetail';
 import Analysis from '../analysis/Analysis';
-import TournamentForm from '../tournament/TournamentForm';
-import TournamentList from '../tournament/TournamentList';
-import TournamentDetail from '../tournament/TournamentDetail';
+import TournamentForm from '../tournament/TournamentForm.tsx';
+import TournamentList from '../tournament/TournamentList.tsx';
+import TournamentDetail from '../tournament/TournamentDetail.tsx';
 import { generateBracket } from '../../utils/tournamentUtils';
 // Eloレーティング計算
 const calculateEloRating = (currentRating: number, opponentRating: number, isWin: boolean, kFactor: number = 32): number => {
