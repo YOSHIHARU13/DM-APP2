@@ -31,10 +31,15 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
     try {
       const loserId = match.deck1Id === winnerId ? match.deck2Id : match.deck1Id;
       
+      if (!match.deck1Id || !match.deck2Id) {
+        alert('デッキ情報が不正です');
+        return;
+      }
+      
       // Battle オブジェクトを作成
       const battle: Omit<Battle, 'id'> = {
-        deck1Id: match.deck1Id!,
-        deck2Id: match.deck2Id!,
+        deck1Id: match.deck1Id,
+        deck2Id: match.deck2Id,
         deck1Wins: winnerId === match.deck1Id ? 1 : 0,
         deck2Wins: winnerId === match.deck2Id ? 1 : 0,
         deck1GoingFirst: 0,
@@ -182,7 +187,7 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
             <h3 className="text-xl font-bold mb-6">試合結果入力</h3>
             
             <div className="space-y-4 mb-6">
-              {[selectedMatch.deck1Id, selectedMatch.deck2Id].map((deckId) => {
+              {[selectedMatch.deck1Id, selectedMatch.deck2Id].filter((id): id is string => id !== null).map((deckId) => {
                 const deck = getDeckById(deckId);
                 if (!deck) return null;
                 
