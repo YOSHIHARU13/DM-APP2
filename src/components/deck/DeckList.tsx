@@ -8,14 +8,19 @@ import {
   deleteDoc,
   doc,
   writeBatch,
-  Timestamp
+  Timestamp,
+  updateDoc
 } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { Deck, Battle, DeckListProps } from '../../types';
+import { Deck, Battle, DeckListProps, Tournament } from '../../types';
 import DeckForm from './DeckForm';
 import BattleForm from '../battle/BattleForm';
 import DeckDetail from './DeckDetail';
 import Analysis from '../analysis/Analysis';
+import TournamentForm from '../tournament/TournamentForm';
+import TournamentList from '../tournament/TournamentList';
+import TournamentDetail from '../tournament/TournamentDetail';
+import { generateBracket, updateBracketWithResult, getFinalRankings } from '../../utils/tournamentUtils';
 
 // Eloレーティング計算
 const calculateEloRating = (currentRating: number, opponentRating: number, isWin: boolean, kFactor: number = 32): number => {
@@ -34,6 +39,11 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
   const [showAnalysis, setShowAnalysis] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<'name' | 'winRate' | 'normalizedWinRate' | 'rating' | 'created'>('rating');
   const [loading, setLoading] = useState<boolean>(true);
+  
+  // トーナメント関連のstate
+  const [currentView, setCurrentView] = useState<'decks' | 'tournaments' | 'tournament_form' | 'tournament_detail'>('decks');
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
 
   // 全体環境プロジェクトを検索
   const findGlobalProject = async (userId: string) => {
@@ -312,6 +322,21 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
         const ratings = initializeDeckRatings(loadedBattles, loadedDecks);
         setDeckRatings(ratings);
 
+        // トーナメントデータの読み込み
+        const tournamentsQuery = query(collection(db, 'tournaments'), where('projectId', '==', project.id));
+        const tournamentsSnapshot = await getDocs(tournamentsQuery);
+        const loadedTournaments: Tournament[] = [];
+        tournamentsSnapshot.forEach((docSnap) => {
+          const data = docSnap.data() as any;
+          loadedTournaments.push({
+            id: docSnap.id,
+            ...data,
+            createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
+            completedAt: data.completedAt ? (data.completedAt instanceof Timestamp ? data.completedAt.toDate() : new Date()) : undefined
+          });
+        });
+        setTournaments(loadedTournaments);
+
         // 2. 画面表示を完了（ここで高速表示）
         setLoading(false);
 
@@ -454,6 +479,120 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
     setDeckRatings(newRatings);
   };
 
+  // トーナメント作成
+  const handleTournamentCreate = async (tournamentData: Omit<Tournament, 'id' | 'createdAt' | 'status' | 'bracket'>) => {
+    try {
+      const bracket = generateBracket(tournamentData.participantDeckIds, tournamentData.format);
+      
+      const newTournament = {
+        ...tournamentData,
+        status: 'in_progress' as const,
+        bracket,
+        createdAt: new Date()
+      };
+
+      const docRef = await addDoc(collection(db, 'tournaments'), newTournament);
+      
+      setTournaments([...tournaments, { ...newTournament, id: docRef.id }]);
+      setCurrentView('tournaments');
+    } catch (error) {
+      console.error('トーナメント作成に失敗:', error);
+      alert('トーナメントの作成に失敗しました');
+    }
+  };
+
+  // 試合完了処理
+  const handleMatchComplete = async (tournamentId: string, matchId: string, battle: Omit<Battle, 'id'>) => {
+    try {
+      // 対戦記録を保存
+      const battleDocRef = await addDoc(collection(db, 'battles'), battle);
+      
+      // トーナメントを更新
+      const tournament = tournaments.find(t => t.id === tournamentId);
+      if (!tournament) return;
+
+      const winnerId = battle.deck1Wins > battle.deck2Wins ? battle.deck1Id : battle.deck2Id;
+      const loserId = battle.deck1Wins > battle.deck2Wins ? battle.deck2Id : battle.deck1Id;
+
+      const updatedBracket = updateBracketWithResult(
+        tournament.bracket,
+        matchId,
+        winnerId,
+        loserId,
+        tournament.format
+      );
+
+      await updateDoc(doc(db, 'tournaments', tournamentId), {
+        bracket: updatedBracket
+      });
+
+      // ローカル状態も更新
+      const updatedTournaments = tournaments.map(t =>
+        t.id === tournamentId ? { ...t, bracket: updatedBracket } : t
+      );
+      setTournaments(updatedTournaments);
+      setSelectedTournament({ ...tournament, bracket: updatedBracket });
+      
+      // battles も更新
+      const newBattle = { ...battle, id: battleDocRef.id };
+      setBattles([...battles, newBattle]);
+    } catch (error) {
+      console.error('試合結果の保存に失敗:', error);
+      alert('試合結果の保存に失敗しました');
+    }
+  };
+
+  // トーナメント完了処理
+  const handleTournamentComplete = async (tournamentId: string) => {
+    try {
+      const tournament = tournaments.find(t => t.id === tournamentId);
+      if (!tournament) return;
+
+      const rankings = getFinalRankings(tournament);
+
+      await updateDoc(doc(db, 'tournaments', tournamentId), {
+        status: 'completed',
+        completedAt: new Date(),
+        winnerId: rankings.winner,
+        runnerUpId: rankings.runnerUp,
+        thirdPlaceIds: rankings.thirdPlace
+      });
+
+      // デッキに称号を付与
+      const updateDeckTitle = async (deckId: string | null, rank: 1 | 2 | 3) => {
+        if (!deckId) return;
+        const deck = decks.find(d => d.id === deckId);
+        if (deck) {
+          const titles = deck.tournamentTitles || [];
+          titles.push({
+            tournamentId: tournament.id,
+            tournamentName: tournament.name,
+            rank,
+            date: new Date()
+          });
+          await updateDoc(doc(db, 'decks', deckId), {
+            tournamentTitles: titles
+          });
+        }
+      };
+
+      await updateDeckTitle(rankings.winner, 1);
+      await updateDeckTitle(rankings.runnerUp, 2);
+      for (const thirdId of rankings.thirdPlace) {
+        await updateDeckTitle(thirdId, 3);
+      }
+
+      const updatedTournaments = tournaments.map(t =>
+        t.id === tournamentId ? { ...t, status: 'completed' as const, ...rankings } : t
+      );
+      setTournaments(updatedTournaments);
+      setCurrentView('tournaments');
+    } catch (error) {
+      console.error('トーナメント完了処理に失敗:', error);
+      alert('トーナメントの完了処理に失敗しました');
+    }
+  };
+
   // 勝率計算
   const getDeckWinRate = (deckId: string) => {
     const deckBattles = battles.filter(b => b.deck1Id === deckId || b.deck2Id === deckId);
@@ -588,6 +727,62 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
     );
   }
 
+  // トーナメント画面
+  if (currentView === 'tournaments') {
+    return (
+      <div style={{ padding: '20px' }}>
+        <button
+          onClick={() => setCurrentView('decks')}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: '#6c757d',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            marginBottom: '20px'
+          }}
+        >
+          ← デッキ一覧に戻る
+        </button>
+        <TournamentList
+          tournaments={tournaments}
+          decks={decks}
+          onTournamentSelect={(t) => {
+            setSelectedTournament(t);
+            setCurrentView('tournament_detail');
+          }}
+          onCreateNew={() => setCurrentView('tournament_form')}
+        />
+      </div>
+    );
+  }
+
+  if (currentView === 'tournament_form') {
+    return (
+      <div style={{ padding: '20px' }}>
+        <TournamentForm
+          projectId={project.id}
+          decks={decks}
+          onTournamentCreate={handleTournamentCreate}
+          onCancel={() => setCurrentView('tournaments')}
+        />
+      </div>
+    );
+  }
+
+  if (currentView === 'tournament_detail' && selectedTournament) {
+    return (
+      <TournamentDetail
+        tournament={selectedTournament}
+        decks={decks}
+        onBack={() => setCurrentView('tournaments')}
+        onMatchComplete={handleMatchComplete}
+        onTournamentComplete={handleTournamentComplete}
+      />
+    );
+  }
+
   return (
     <div style={{ padding: '20px' }}>
       {/* ヘッダー */}
@@ -676,6 +871,22 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
           }}
         >
           📊 詳細分析
+        </button>
+
+        <button
+          onClick={() => setCurrentView('tournaments')}
+          disabled={showDeckForm || showBattleForm}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: '#17a2b8',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            opacity: (showDeckForm || showBattleForm) ? 0.6 : 1
+          }}
+        >
+          🏆 トーナメント
         </button>
 
         <button
