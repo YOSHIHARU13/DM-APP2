@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { TournamentFormProps } from '../../types';
 
-const TournamentForm: React.FC<TournamentFormProps> = ({ 
-  projectId, 
+export const TournamentForm: React.FC<TournamentFormProps> = ({  projectId, 
   decks, 
   onTournamentCreate, 
   onCancel 
