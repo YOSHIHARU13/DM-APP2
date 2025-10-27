@@ -390,20 +390,35 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
     }
   };
 
-  // 対戦追加
-  const handleBattleAdd = async (newBattle: Battle) => {
-    try {
-      const battleData = {
-        deck1Id: newBattle.deck1Id,
-        deck2Id: newBattle.deck2Id,
-        deck1Wins: newBattle.deck1Wins,
-        deck2Wins: newBattle.deck2Wins,
-        deck1GoingFirst: newBattle.deck1GoingFirst,
-        deck2GoingFirst: newBattle.deck2GoingFirst,
-        memo: newBattle.memo,
-        date: newBattle.date,
-        projectId: newBattle.projectId
-      };
+// 対戦追加
+const handleBattleAdd = async (newBattle: Omit<Battle, 'id'>) => {
+  try {
+    const battleData = {
+      deck1Id: newBattle.deck1Id,
+      deck2Id: newBattle.deck2Id,
+      deck1Wins: newBattle.deck1Wins,
+      deck2Wins: newBattle.deck2Wins,
+      deck1GoingFirst: newBattle.deck1GoingFirst,
+      deck2GoingFirst: newBattle.deck2GoingFirst,
+      memo: newBattle.memo,
+      date: newBattle.date,
+      projectId: newBattle.projectId
+    };
+
+    const docRef = await addDoc(collection(db, 'battles'), battleData);
+    
+    const battleWithId: Battle = {
+      ...battleData,
+      id: docRef.id
+    };
+    
+    setBattles([...battles, battleWithId]);
+    setShowBattleForm(false);
+  } catch (error) {
+    console.error('対戦の追加に失敗:', error);
+    alert('対戦の追加に失敗しました');
+  }
+};
 
       const docRef = await addDoc(collection(db, 'battles'), battleData);
       const battleWithId = { ...newBattle, id: docRef.id };
