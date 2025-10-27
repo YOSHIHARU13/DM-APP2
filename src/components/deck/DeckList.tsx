@@ -17,9 +17,10 @@ import DeckForm from './DeckForm';
 import BattleForm from '../battle/BattleForm';
 import DeckDetail from './DeckDetail';
 import Analysis from '../analysis/Analysis';
-import TournamentForm from '../tournament/TournamentForm';
-import TournamentList from '../tournament/TournamentList';
-import TournamentDetail from '../tournament/TournamentDetail';
+// これに変更
+import { TournamentForm } from '../tournament/TournamentForm';
+import { TournamentList } from '../tournament/TournamentList';
+import { TournamentDetail } from '../tournament/TournamentDetail';
 import { generateBracket, updateBracketWithResult, getFinalRankings } from '../../utils/tournamentUtils';
 
 // Eloレーティング計算
