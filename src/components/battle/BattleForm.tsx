@@ -163,6 +163,12 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
     }
   }, [deck1Id, deck2Id, matchupAnalysis]);
 
+  // デッキ名を取得するヘルパー関数
+  const getDeckName = (deckId: string) => {
+    const deck = decks.find(d => d.id === deckId);
+    return deck ? deck.name : '不明';
+  };
+
   // デッキ選択時の情報表示
   const getMatchupInfo = (deckId1: string, deckId2: string) => {
     if (!deckId1 || !deckId2) return null;
@@ -207,11 +213,6 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
   };
 
   const matchupInfo = getMatchupInfo(deck1Id, deck2Id);
-
-  const getDeckName = (deckId: string) => {
-    const deck = decks.find(d => d.id === deckId);
-    return deck ? deck.name : '不明';
-  };
 
   const handleSuggestionClick = (suggestion: MatchupSuggestion) => {
     setDeck1Id(suggestion.deck1Id);
