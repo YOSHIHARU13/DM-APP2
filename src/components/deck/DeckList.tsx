@@ -541,55 +541,59 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
     }
   };
 
-  // トーナメント完了処理
   const handleTournamentComplete = async (tournamentId: string) => {
-    try {
-      const tournament = tournaments.find(t => t.id === tournamentId);
-      if (!tournament) return;
+  try {
+    const tournament = tournaments.find(t => t.id === tournamentId);
+    if (!tournament) return;
 
-      const rankings = getFinalRankings(tournament);
+    const rankings = getFinalRankings(tournament);
 
-      await updateDoc(doc(db, 'tournaments', tournamentId), {
-        status: 'completed',
-        completedAt: new Date(),
-        winnerId: rankings.winner,
-        runnerUpId: rankings.runnerUp,
-        thirdPlaceIds: rankings.thirdPlace
+    await updateDoc(doc(db, 'tournaments', tournamentId), {
+      status: 'completed',
+      completedAt: new Date(),
+      winnerId: rankings.winner,
+      runnerUpId: rankings.runnerUp,
+      thirdPlaceIds: rankings.thirdPlace
+    });
+
+    // デッキに称号を付与する関数をここで定義
+    const updateDeckTitle = async (deckId: string | null, rank: 1 | 2 | 3) => {
+      if (!deckId) return;
+      const deck = decks.find(d => d.id === deckId);
+      if (!deck) return;
+
+      const titles = deck.tournamentTitles || [];
+      titles.push({
+        tournamentId: tournament.id,
+        tournamentName: tournament.name,
+        rank,
+        date: new Date()
       });
 
+      await updateDoc(doc(db, 'decks', deckId), { tournamentTitles: titles });
+    };
 
-     // デッキに称号を付与
-const updateDeckTitle = async (deckId: string | null, rank: 1 | 2 | 3) => {
-  if (!deckId) return;  // nullなら処理しない
-  const deck = decks.find(d => d.id === deckId);
-  if (!deck) return;
+    // ランキングに応じて称号を付与
+    await updateDeckTitle(rankings.winner, 1);
+    await updateDeckTitle(rankings.runnerUp, 2);
+    for (const thirdId of rankings.thirdPlace) {
+      await updateDeckTitle(thirdId, 3);
+    }
 
-  const titles = deck.tournamentTitles || [];
-  titles.push({
-    tournamentId: tournament.id,
-    tournamentName: tournament.name,
-    rank,
-    date: new Date()
-  });
+    // ローカル状態更新
+    const updatedTournaments = tournaments.map(t =>
+      t.id === tournamentId ? { ...t, status: 'completed' as const, ...rankings } : t
+    );
+    setTournaments(updatedTournaments);
+    setCurrentView('tournaments');
 
-  await updateDoc(doc(db, 'decks', deckId), {
-    tournamentTitles: titles
-  });
+  } catch (error) {
+    console.error('トーナメント完了処理に失敗:', error);
+    alert('トーナメントの完了処理に失敗しました');
+  }
 };
 
 
-  const titles = deck.tournamentTitles || [];
-  titles.push({
-    tournamentId: tournament.id,
-    tournamentName: tournament.name,
-    rank,
-    date: new Date()
-  });
-
-  await updateDoc(doc(db, 'decks', deckId), {
-    tournamentTitles: titles
-  });
-};
 
       await updateDeckTitle(rankings.winner, 1);
       await updateDeckTitle(rankings.runnerUp, 2);
