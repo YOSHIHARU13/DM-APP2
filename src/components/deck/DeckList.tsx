@@ -21,7 +21,7 @@ import TournamentForm from '../tournament/TournamentForm';
 import TournamentList from '../tournament/TournamentList';
 import TournamentDetail from '../tournament/TournamentDetail';
 
-import { generateBracket } from '../../utils/tournamentUtils';
+import { generateBracket, updateBracketWithResult, getFinalRankings } from '../../utils/tournamentUtils';
 // Eloレーティング計算
 const calculateEloRating = (currentRating: number, opponentRating: number, isWin: boolean, kFactor: number = 32): number => {
   const expectedScore = 1 / (1 + Math.pow(10, (opponentRating - currentRating) / 400));
