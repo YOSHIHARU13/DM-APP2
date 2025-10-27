@@ -1,6 +1,6 @@
 {
   "name": "duelmasters-app",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "private": true,
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
