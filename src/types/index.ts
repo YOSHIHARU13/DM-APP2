@@ -82,6 +82,12 @@ export interface Tournament {
   bracket: TournamentBracket;
 }
 
+// トーナメント関連の型定義
+export type TournamentFormat = 'single' | 'double';
+export type MatchType = 'best_of_1' | 'best_of_3';
+export type MatchStatus = 'pending' | 'in_progress' | 'completed';
+export type TournamentStatus = 'setup' | 'in_progress' | 'completed';
+
 // トーナメントブラケット構造
 export interface TournamentBracket {
   winnersBracket: Round[];
