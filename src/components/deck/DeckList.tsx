@@ -593,25 +593,6 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
   }
 };
 
-
-
-      await updateDeckTitle(rankings.winner, 1);
-      await updateDeckTitle(rankings.runnerUp, 2);
-      for (const thirdId of rankings.thirdPlace) {
-        await updateDeckTitle(thirdId, 3);
-      }
-
-      const updatedTournaments = tournaments.map(t =>
-        t.id === tournamentId ? { ...t, status: 'completed' as const, ...rankings } : t
-      );
-      setTournaments(updatedTournaments);
-      setCurrentView('tournaments');
-    } catch (error) {
-      console.error('トーナメント完了処理に失敗:', error);
-      alert('トーナメントの完了処理に失敗しました');
-    }
-  };
-
   // 勝率計算
   const getDeckWinRate = (deckId: string) => {
     const deckBattles = battles.filter(b => b.deck1Id === deckId || b.deck2Id === deckId);
