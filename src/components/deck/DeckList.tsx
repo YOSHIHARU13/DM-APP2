@@ -20,8 +20,7 @@ import Analysis from '../analysis/Analysis';
 import TournamentForm from '../tournament/TournamentForm.tsx';
 import TournamentList from '../tournament/TournamentList.tsx';
 import TournamentDetail from '../tournament/TournamentDetail.tsx';
-import { generateBracket, updateBracketWithResult, getFinalRankings } from '../../utils/tournamentUtils';
-
+import { generateBracket } from '../../utils/tournamentUtils';
 // Eloレーティング計算
 const calculateEloRating = (currentRating: number, opponentRating: number, isWin: boolean, kFactor: number = 32): number => {
   const expectedScore = 1 / (1 + Math.pow(10, (opponentRating - currentRating) / 400));
