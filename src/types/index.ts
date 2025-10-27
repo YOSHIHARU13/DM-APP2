@@ -36,9 +36,18 @@ export interface Deck {
   id: string;
   name: string;
   colors: string[];
-  imageUrl?: string;  // デッキの画像URL
+  imageUrl?: string;
   createdAt: Date;
   projectId: string;
+  tournamentTitles?: TournamentTitle[];  // トーナメント戦績を追加
+}
+
+// トーナメント称号の型
+export interface TournamentTitle {
+  tournamentId: string;
+  tournamentName: string;
+  rank: 1 | 2 | 3;
+  date: Date;
 }
 
 // Battle型（1戦ずつの記録）
@@ -46,13 +55,59 @@ export interface Battle {
   id: string;
   deck1Id: string;
   deck2Id: string;
-  deck1Wins: number;        // 1 or 0 (1戦の勝敗)
-  deck2Wins: number;        // 1 or 0 (1戦の勝敗)
-  deck1GoingFirst: number;  // 1 or 0 (先攻かどうか)
-  deck2GoingFirst: number;  // 1 or 0 (先攻かどうか)
+  deck1Wins: number;
+  deck2Wins: number;
+  deck1GoingFirst: number;
+  deck2GoingFirst: number;
   memo: string;
   date: Date;
   projectId: string;
+  tournamentId?: string;  // トーナメント戦かどうかを判別
+}
+
+// トーナメント情報の型
+export interface Tournament {
+  id: string;
+  projectId: string;
+  name: string;
+  format: 'single' | 'double';
+  matchType: 'best_of_1' | 'best_of_3';
+  participantDeckIds: string[];
+  status: 'setup' | 'in_progress' | 'completed';
+  createdAt: Date;
+  completedAt?: Date;
+  winnerId?: string;
+  runnerUpId?: string;
+  thirdPlaceIds?: string[];
+  bracket: TournamentBracket;
+}
+
+// トーナメントブラケット構造
+export interface TournamentBracket {
+  winnersBracket: Round[];
+  losersBracket?: Round[];
+  thirdPlaceMatch?: Match;
+  grandFinal?: Match;
+}
+
+// ラウンド情報
+export interface Round {
+  roundNumber: number;
+  roundName: string;
+  matches: Match[];
+}
+
+// 試合情報
+export interface Match {
+  matchId: string;
+  deck1Id: string | null;
+  deck2Id: string | null;
+  deck1Wins: number;
+  deck2Wins: number;
+  winnerId: string | null;
+  loserId: string | null;
+  status: 'pending' | 'in_progress' | 'completed';
+  battleId?: string;
 }
 
 // デッキ一覧画面のProps
@@ -72,8 +127,8 @@ export interface DeckFormProps {
 export interface BattleFormProps {
   projectId: string;
   decks: Deck[];
-  battles?: Battle[];  // ← この行を追加しました！おすすめ対戦機能のために必要です
-  onBattleAdd: (battle: Battle) => void;
+  battles?: Battle[];
+  onBattleAdd: (battle: Omit<Battle, 'id'>) => void;
   onCancel: () => void;
 }
 
@@ -84,7 +139,7 @@ export interface DeckDetailProps {
   allDecks: Deck[];
   onBack: () => void;
   onBattleDelete?: (battleId: string) => void;
-  onDeckUpdate?: (updatedDeck: Deck) => void;  // デッキ情報更新用
+  onDeckUpdate?: (updatedDeck: Deck) => void;
 }
 
 // 分析画面のProps
@@ -117,4 +172,29 @@ export interface TriangleData {
     deck2VsDeck3: number;
     deck3VsDeck1: number;
   };
+}
+
+// トーナメント作成フォームのProps
+export interface TournamentFormProps {
+  projectId: string;
+  decks: Deck[];
+  onTournamentCreate: (tournament: Omit<Tournament, 'id' | 'createdAt' | 'status' | 'bracket'>) => void;
+  onCancel: () => void;
+}
+
+// トーナメント詳細画面のProps
+export interface TournamentDetailProps {
+  tournament: Tournament;
+  decks: Deck[];
+  onBack: () => void;
+  onMatchComplete: (tournamentId: string, matchId: string, battle: Omit<Battle, 'id'>) => void;
+  onTournamentComplete: (tournamentId: string) => void;
+}
+
+// トーナメント一覧のProps
+export interface TournamentListProps {
+  tournaments: Tournament[];
+  decks: Deck[];
+  onTournamentSelect: (tournament: Tournament) => void;
+  onCreateNew: () => void;
 }
