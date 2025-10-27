@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../firebase';
-import { Tournament, Deck, Match, Round, Battle } from '../../types';
+import { Tournament, Deck, Match, Battle } from '../../types';
+import BattleForm from '../battle/BattleForm';
 
 interface TournamentDetailProps {
   tournament: Tournament;
   decks: Deck[];
+  battles: Battle[];
   onBack: () => void;
   onMatchComplete: (tournamentId: string, matchId: string, battle: Omit<Battle, 'id'>) => Promise<void>;
   onTournamentComplete: (tournamentId: string) => Promise<void>;
@@ -14,51 +14,23 @@ interface TournamentDetailProps {
 export const TournamentDetail: React.FC<TournamentDetailProps> = ({
   tournament,
   decks,
+  battles,
   onBack,
   onMatchComplete,
   onTournamentComplete,
 }) => {
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
-  const [updating, setUpdating] = useState(false);
 
   const getDeckById = (deckId: string | null) => {
     if (!deckId) return null;
     return decks.find(d => d.id === deckId);
   };
 
-  const handleMatchResult = async (match: Match, winnerId: string) => {
-    setUpdating(true);
-    try {
-      const loserId = match.deck1Id === winnerId ? match.deck2Id : match.deck1Id;
-      
-      if (!match.deck1Id || !match.deck2Id) {
-        alert('デッキ情報が不正です');
-        return;
-      }
-      
-      // Battle オブジェクトを作成
-      const battle: Omit<Battle, 'id'> = {
-        deck1Id: match.deck1Id,
-        deck2Id: match.deck2Id,
-        deck1Wins: winnerId === match.deck1Id ? 1 : 0,
-        deck2Wins: winnerId === match.deck2Id ? 1 : 0,
-        deck1GoingFirst: 0,
-        deck2GoingFirst: 0,
-        memo: `トーナメント: ${tournament.name}`,
-        date: new Date(),
-        projectId: tournament.projectId,
-      };
-
-      // DeckList の handleMatchComplete を呼び出す
-      await onMatchComplete(tournament.id, match.matchId, battle);
-
-      setSelectedMatch(null);
-    } catch (error) {
-      console.error('試合結果更新エラー:', error);
-      alert('試合結果の更新に失敗しました');
-    } finally {
-      setUpdating(false);
-    }
+  const handleBattleAdd = async (battle: Omit<Battle, 'id'>) => {
+    if (!selectedMatch) return;
+    
+    await onMatchComplete(tournament.id, selectedMatch.matchId, battle);
+    setSelectedMatch(null);
   };
 
   const getRoundName = (roundIndex: number, totalRounds: number) => {
@@ -75,7 +47,7 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
       <div className="mb-6">
         <button
           onClick={onBack}
-          className="text-blue-500 hover:text-blue-600 mb-4"
+          className="text-blue-500 hover:text-blue-600 mb-4 font-medium"
         >
           ← トーナメント一覧に戻る
         </button>
@@ -104,7 +76,7 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
       <div className="space-y-8">
         {tournament.bracket.winnersBracket.map((round, roundIndex) => (
           <div key={roundIndex}>
-            <h3 className="text-lg font-bold mb-4">
+            <h3 className="text-lg font-bold mb-4 text-gray-800">
               {getRoundName(roundIndex, tournament.bracket.winnersBracket.length)}
             </h3>
             
@@ -112,64 +84,77 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
               {round.matches.map((match) => {
                 const deck1 = getDeckById(match.deck1Id);
                 const deck2 = getDeckById(match.deck2Id);
+                const canPlay = match.status === 'pending' && deck1 && deck2;
                 
                 return (
                   <div
                     key={match.matchId}
-                    className={`border-2 rounded-lg p-4 ${
+                    className={`border-2 rounded-lg p-4 transition-all ${
                       match.status === 'completed'
                         ? 'border-gray-300 bg-gray-50'
-                        : 'border-blue-300 bg-white hover:shadow-md cursor-pointer'
+                        : canPlay
+                        ? 'border-blue-400 bg-white hover:shadow-lg hover:border-blue-600 cursor-pointer transform hover:scale-105'
+                        : 'border-gray-200 bg-gray-50'
                     }`}
-                    onClick={() => match.status === 'pending' && setSelectedMatch(match)}
+                    onClick={() => canPlay && setSelectedMatch(match)}
                   >
                     {/* デッキ1 */}
-                    <div className={`flex items-center gap-3 p-3 rounded ${
-                      match.winnerId === match.deck1Id ? 'bg-green-100' : ''
+                    <div className={`flex items-center gap-3 p-3 rounded-lg mb-2 ${
+                      match.winnerId === match.deck1Id ? 'bg-green-100 border-2 border-green-400' : 'bg-gray-100'
                     }`}>
                       {deck1 ? (
                         <>
-                          {deck1.imageUrl && (
-                            <img
-                              src={deck1.imageUrl}
-                              alt={deck1.name}
-                              className="w-12 h-12 object-cover rounded"
-                            />
+                          <img
+                            src={deck1.imageUrl || '/placeholder-deck.png'}
+                            alt={deck1.name}
+                            className="w-16 h-16 object-cover rounded border-2 border-gray-300"
+                            style={{ aspectRatio: '1/1' }}
+                          />
+                          <span className="font-bold flex-1 text-gray-800">{deck1.name}</span>
+                          {match.winnerId === deck1.id && (
+                            <span className="text-3xl">🏆</span>
                           )}
-                          <span className="font-medium flex-1">{deck1.name}</span>
-                          {match.winnerId === deck1.id && <span className="text-xl">🏆</span>}
                         </>
                       ) : (
-                        <span className="text-gray-400 italic">シード待ち</span>
+                        <div className="flex items-center gap-3">
+                          <div className="w-16 h-16 bg-gray-200 rounded border-2 border-gray-300"></div>
+                          <span className="text-gray-400 italic">シード待ち</span>
+                        </div>
                       )}
                     </div>
 
-                    <div className="text-center text-gray-400 text-sm my-2">VS</div>
+                    <div className="text-center text-gray-400 font-bold my-2">VS</div>
 
                     {/* デッキ2 */}
-                    <div className={`flex items-center gap-3 p-3 rounded ${
-                      match.winnerId === match.deck2Id ? 'bg-green-100' : ''
+                    <div className={`flex items-center gap-3 p-3 rounded-lg ${
+                      match.winnerId === match.deck2Id ? 'bg-green-100 border-2 border-green-400' : 'bg-gray-100'
                     }`}>
                       {deck2 ? (
                         <>
-                          {deck2.imageUrl && (
-                            <img
-                              src={deck2.imageUrl}
-                              alt={deck2.name}
-                              className="w-12 h-12 object-cover rounded"
-                            />
+                          <img
+                            src={deck2.imageUrl || '/placeholder-deck.png'}
+                            alt={deck2.name}
+                            className="w-16 h-16 object-cover rounded border-2 border-gray-300"
+                            style={{ aspectRatio: '1/1' }}
+                          />
+                          <span className="font-bold flex-1 text-gray-800">{deck2.name}</span>
+                          {match.winnerId === deck2.id && (
+                            <span className="text-3xl">🏆</span>
                           )}
-                          <span className="font-medium flex-1">{deck2.name}</span>
-                          {match.winnerId === deck2.id && <span className="text-xl">🏆</span>}
                         </>
                       ) : (
-                        <span className="text-gray-400 italic">シード待ち</span>
+                        <div className="flex items-center gap-3">
+                          <div className="w-16 h-16 bg-gray-200 rounded border-2 border-gray-300"></div>
+                          <span className="text-gray-400 italic">シード待ち</span>
+                        </div>
                       )}
                     </div>
 
-                    {match.status === 'pending' && deck1 && deck2 && (
-                      <div className="mt-3 text-center text-sm text-blue-600">
-                        クリックして結果を入力
+                    {canPlay && (
+                      <div className="mt-4 text-center">
+                        <div className="text-sm font-bold text-blue-600 bg-blue-50 py-2 px-4 rounded-lg">
+                          ⚔️ クリックして対戦結果を入力
+                        </div>
                       </div>
                     )}
                   </div>
@@ -180,45 +165,29 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
         ))}
       </div>
 
-      {/* 結果入力モーダル */}
-      {selectedMatch && (
+      {/* 対戦入力フォーム */}
+      {selectedMatch && selectedMatch.deck1Id && selectedMatch.deck2Id && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <h3 className="text-xl font-bold mb-6">試合結果入力</h3>
-            
-            <div className="space-y-4 mb-6">
-              {[selectedMatch.deck1Id, selectedMatch.deck2Id].filter((id): id is string => id !== null).map((deckId) => {
-                const deck = getDeckById(deckId);
-                if (!deck) return null;
-                
-                return (
-                  <button
-                    key={deckId}
-                    onClick={() => handleMatchResult(selectedMatch, deckId)}
-                    disabled={updating}
-                    className="w-full flex items-center gap-3 p-4 border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition disabled:opacity-50"
-                  >
-                    {deck.imageUrl && (
-                      <img
-                        src={deck.imageUrl}
-                        alt={deck.name}
-                        className="w-16 h-16 object-cover rounded"
-                      />
-                    )}
-                    <span className="font-bold text-lg flex-1 text-left">{deck.name}</span>
-                    <span className="text-2xl">🏆</span>
-                  </button>
-                );
-              })}
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold">トーナメント対戦結果入力</h3>
+                <button
+                  onClick={() => setSelectedMatch(null)}
+                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+              
+              <BattleForm
+                projectId={tournament.projectId}
+                decks={decks.filter(d => d.id === selectedMatch.deck1Id || d.id === selectedMatch.deck2Id)}
+                battles={battles}
+                onBattleAdd={handleBattleAdd}
+                onCancel={() => setSelectedMatch(null)}
+              />
             </div>
-
-            <button
-              onClick={() => setSelectedMatch(null)}
-              disabled={updating}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-            >
-              キャンセル
-            </button>
           </div>
         </div>
       )}
