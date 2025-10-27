@@ -248,3 +248,5 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
     </div>
   );
 };
+
+export default TournamentDetail;
