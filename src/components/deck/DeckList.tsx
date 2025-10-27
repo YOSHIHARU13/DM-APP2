@@ -519,7 +519,6 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
         matchId,
         winnerId,
         loserId,
-        tournament.format
       );
 
       await updateDoc(doc(db, 'tournaments', tournamentId), {
