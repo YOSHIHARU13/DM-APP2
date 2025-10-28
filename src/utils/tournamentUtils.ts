@@ -44,63 +44,60 @@ const generateSingleEliminationBracket = (deckIds: string[], seed: number): Tour
   // 次の2のべき乗
   const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(shuffled.length)));
   
-  // 1回戦の試合数（実際に戦う人数 ÷ 2）
-  const firstRoundFights = shuffled.length - (nextPowerOf2 - shuffled.length);
-  const firstRoundMatches = Math.floor(firstRoundFights / 2);
+  // 1回戦で戦う必要がある人数
+  const playersNeedingFirstRound = (shuffled.length - nextPowerOf2 / 2) * 2;
+  const firstRoundMatches = playersNeedingFirstRound / 2;
   
-  // シード選手数（2回戦から登場）
-  const seededPlayers = shuffled.length - firstRoundFights;
+  // 2回戦から登場する人数（シード選手）
+  const seededPlayers = shuffled.length - playersNeedingFirstRound;
   
   console.log('次の2のべき乗:', nextPowerOf2);
   console.log('1回戦試合数:', firstRoundMatches);
-  console.log('1回戦参加人数:', firstRoundFights);
+  console.log('1回戦参加人数:', playersNeedingFirstRound);
   console.log('シード選手数:', seededPlayers);
   
-  // 1回戦の組み合わせ
-  const round1Matches: Match[] = [];
-  for (let i = 0; i < firstRoundMatches; i++) {
-    round1Matches.push({
-      matchId: `r1-m${i + 1}`,
-      deck1Id: shuffled[i * 2],
-      deck2Id: shuffled[i * 2 + 1],
-      deck1Wins: 0,
-      deck2Wins: 0,
-      winnerId: null,
-      loserId: null,
-      status: 'pending',
-    });
-  }
-  
-  // 1回戦の勝者 + シード選手
-  const round2Participants: (string | null)[] = [];
-  
-  // 1回戦の勝者枠（まだ未定なのでnull）
-  for (let i = 0; i < firstRoundMatches; i++) {
-    round2Participants.push(null);
-  }
-  
-  // シード選手を追加
-  for (let i = firstRoundFights; i < shuffled.length; i++) {
-    round2Participants.push(shuffled[i]);
-  }
-  
-  console.log('2回戦参加予定:', round2Participants);
-  
-  // ラウンドを構築
   const rounds: Round[] = [];
+  let currentParticipants: (string | null)[] = [];
   
   // 1回戦
-  if (round1Matches.length > 0) {
+  if (firstRoundMatches > 0) {
+    const round1Matches: Match[] = [];
+    
+    for (let i = 0; i < firstRoundMatches; i++) {
+      round1Matches.push({
+        matchId: `r1-m${i + 1}`,
+        deck1Id: shuffled[i * 2],
+        deck2Id: shuffled[i * 2 + 1],
+        deck1Wins: 0,
+        deck2Wins: 0,
+        winnerId: null,
+        loserId: null,
+        status: 'pending',
+      });
+    }
+    
     rounds.push({
       roundNumber: 1,
-      roundName: getRoundName(round1Matches.length),
+      roundName: '1回戦',
       matches: round1Matches,
     });
+    
+    // 2回戦の参加者 = 1回戦勝者（まだ未定） + シード選手
+    for (let i = 0; i < firstRoundMatches; i++) {
+      currentParticipants.push(null); // 1回戦勝者の枠
+    }
+    for (let i = playersNeedingFirstRound; i < shuffled.length; i++) {
+      currentParticipants.push(shuffled[i]); // シード選手
+    }
+  } else {
+    // 参加者がちょうど2のべき乗の場合
+    currentParticipants = shuffled.map(id => id as string | null);
   }
   
+  console.log('2回戦参加予定:', currentParticipants);
+  
   // 2回戦以降
-  let currentParticipants = round2Participants;
-  let roundNumber = 2;
+  let roundNumber = firstRoundMatches > 0 ? 2 : 1;
   
   while (currentParticipants.length > 1) {
     const matches: Match[] = [];
@@ -150,7 +147,7 @@ const getRoundName = (matchCount: number) => {
   if (matchCount === 1) return '決勝';
   if (matchCount === 2) return '準決勝';
   if (matchCount === 4) return '準々決勝';
-  return `1回戦`;
+  return '1回戦';
 };
 
 /**
