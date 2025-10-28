@@ -197,3 +197,87 @@ const getRoundName = (matchCount: number) => {
   if (matchCount === 4) return '準々決勝';
   return `${matchCount * 2}回戦`;
 };
+
+/**
+ * 試合結果でブラケットを更新
+ */
+export const updateBracketWithResult = (
+  bracket: TournamentBracket,
+  matchId: string,
+  winnerId: string,
+  loserId: string
+): TournamentBracket => {
+  const updatedWinnersBracket = bracket.winnersBracket.map(round => ({
+    ...round,
+    matches: round.matches.map(match => {
+      if (match.matchId === matchId) {
+        return {
+          ...match,
+          winnerId,
+          loserId,
+          status: 'completed' as const
+        };
+      }
+      return match;
+    })
+  }));
+
+  // 次のラウンドに勝者を進める
+  for (let i = 0; i < updatedWinnersBracket.length - 1; i++) {
+    const currentRound = updatedWinnersBracket[i];
+    const nextRound = updatedWinnersBracket[i + 1];
+
+    currentRound.matches.forEach((match, matchIndex) => {
+      if (match.status === 'completed' && match.winnerId) {
+        const nextMatchIndex = Math.floor(matchIndex / 2);
+        const nextMatch = nextRound.matches[nextMatchIndex];
+        
+        if (nextMatch) {
+          if (matchIndex % 2 === 0) {
+            nextMatch.deck1Id = match.winnerId;
+          } else {
+            nextMatch.deck2Id = match.winnerId;
+          }
+
+          // 両方の選手が揃ったらpendingに
+          if (nextMatch.deck1Id && nextMatch.deck2Id) {
+            nextMatch.status = 'pending';
+          }
+        }
+      }
+    });
+  }
+
+  return {
+    ...bracket,
+    winnersBracket: updatedWinnersBracket
+  };
+};
+
+/**
+ * 最終順位を取得
+ */
+export const getFinalRankings = (bracket: TournamentBracket): {
+  winner: string | null;
+  runnerUp: string | null;
+  thirdPlace: string[];
+} => {
+  const finalRound = bracket.winnersBracket[bracket.winnersBracket.length - 1];
+  const finalMatch = finalRound?.matches[0];
+
+  const winner = finalMatch?.winnerId || null;
+  const runnerUp = finalMatch?.loserId || null;
+
+  // 準決勝の敗者を3位とする
+  const thirdPlace: string[] = [];
+  if (bracket.winnersBracket.length >= 2) {
+    const semiFinalRound = bracket.winnersBracket[bracket.winnersBracket.length - 2];
+    semiFinalRound.matches.forEach(match => {
+      if (match.loserId && match.loserId !== runnerUp) {
+        thirdPlace.push(match.loserId);
+      }
+    });
+  }
+
+  return { winner, runnerUp, thirdPlace };
+};
