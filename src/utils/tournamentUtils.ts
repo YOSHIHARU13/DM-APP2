@@ -1,4 +1,5 @@
 import { TournamentBracket, Round, Match, TournamentFormat } from '../types';
+import seedrandom from 'seedrandom';
 
 /**
  * トーナメントブラケット生成
