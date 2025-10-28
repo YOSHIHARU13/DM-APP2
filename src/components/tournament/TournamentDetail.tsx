@@ -133,11 +133,11 @@ const TournamentDetail: React.FC<TournamentDetailProps> = ({
             <div style={{ display:'flex', flexDirection:'column', gap:30 }}>
               {round.matches.map(match => {
                 const deck1 = getDeckById(match.deck1Id);
-                const deck2 = match.deck2Id ? getDeckById(match.deck2Id) : null;
-                const isBye = !deck2 || (deck1?.id.startsWith('BYE')) || (deck2?.id.startsWith('BYE'));
-                const winnerId = match.winnerId || (isBye ? deck1?.id || deck2?.id : null);
-                const loserId = deck1?.id && deck2?.id && winnerId ? (deck1.id === winnerId ? deck2.id : deck1.id) : null;
-                const hasUpset = isBye ? false : isUpset(winnerId, loserId);
+                const deck2 = getDeckById(match.deck2Id);
+                const isBye = !match.deck2Id;
+                const winnerId = match.winnerId;
+                const loserId = match.loserId;
+                const hasUpset = match.status === 'completed' && !isBye ? isUpset(winnerId, loserId) : false;
 
                 return (
                   <div key={match.matchId} onClick={() => handleMatchClick(match)}
@@ -152,7 +152,7 @@ const TournamentDetail: React.FC<TournamentDetailProps> = ({
 
                     {/* デッキ1 */}
                     <div style={{ display:'flex', alignItems:'center', gap:12, padding:12, borderRadius:8, backgroundColor: winnerId===deck1?.id?'#d1fae5':'#f9fafb', border: winnerId===deck1?.id?'2px solid #10b981':'1px solid #e5e7eb', marginBottom:8 }}>
-                      {deck1 ? <span>{deck1.name}</span> : <span style={{ fontStyle:'italic', color:'#9ca3af' }}>BYE</span>}
+                      {deck1 ? <span>{deck1.name}</span> : <span style={{ fontStyle:'italic', color:'#9ca3af' }}>シード待ち</span>}
                       {winnerId===deck1?.id && <span>🏆</span>}
                     </div>
 
@@ -160,11 +160,11 @@ const TournamentDetail: React.FC<TournamentDetailProps> = ({
 
                     {/* デッキ2 */}
                     <div style={{ display:'flex', alignItems:'center', gap:12, padding:12, borderRadius:8, backgroundColor: winnerId===deck2?.id?'#d1fae5':'#f9fafb', border: winnerId===deck2?.id?'2px solid #10b981':'1px solid #e5e7eb' }}>
-                      {deck2 ? <span>{deck2.name}</span> : <span style={{ fontStyle:'italic', color:'#9ca3af' }}>BYE</span>}
+                      {deck2 ? <span>{deck2.name}</span> : <span style={{ fontStyle:'italic', color:'#9ca3af' }}>シード待ち</span>}
                       {winnerId===deck2?.id && <span>🏆</span>}
                     </div>
 
-                    {isBye && <div style={{ fontSize:12, color:'#f59e0b', marginTop:4 }}>※ BYEで自動勝利</div>}
+                    {isBye && match.status === 'completed' && <div style={{ fontSize:12, color:'#f59e0b', marginTop:4, textAlign:'center' }}>※ 不戦勝で次回戦へ</div>}
                   </div>
                 );
               })}
