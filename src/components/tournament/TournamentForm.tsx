@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { TournamentFormProps } from '../../types';
+import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import { db } from '../../firebase';
+import { TournamentFormProps, TournamentFormat, MatchType } from '../../types';
+import { generateBracket } from '../../utils/tournamentUtils';
 
 const TournamentForm: React.FC<TournamentFormProps> = ({ 
   projectId, 
@@ -8,8 +11,8 @@ const TournamentForm: React.FC<TournamentFormProps> = ({
   onCancel 
 }) => {
   const [name, setName] = useState<string>('');
-  const [format, setFormat] = useState<'single' | 'double'>('single');
-  const [matchType, setMatchType] = useState<'best_of_1' | 'best_of_3'>('best_of_1');
+  const [format, setFormat] = useState<TournamentFormat>('single');
+  const [matchType, setMatchType] = useState<MatchType>('best_of_1');
   const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>([]);
   const [selectAll, setSelectAll] = useState<boolean>(false);
 
@@ -35,7 +38,6 @@ const TournamentForm: React.FC<TournamentFormProps> = ({
       alert('トーナメント名を入力してください');
       return;
     }
-
     if (selectedDeckIds.length < 2) {
       alert('最低2つのデッキを選択してください');
       return;
