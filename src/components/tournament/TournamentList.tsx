@@ -10,7 +10,7 @@ interface TournamentListProps {
   onCreateNew: () => void;
 }
 
-export const TournamentList: React.FC<TournamentListProps> = ({ projectId, decks }) => {
+export const TournamentList: React.FC<TournamentListProps> = ({ decks, tournaments, onTournamentSelect, onCreateNew }) => {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -151,6 +151,7 @@ export const TournamentList: React.FC<TournamentListProps> = ({ projectId, decks
 };
 
 export default TournamentList;
+
 
 
 
