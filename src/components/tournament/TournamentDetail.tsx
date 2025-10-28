@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Tournament, Deck, Match, Battle } from '../../types';
 
 interface TournamentDetailProps {
@@ -23,9 +23,58 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
   const [selectedGoingFirst, setSelectedGoingFirst] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
 
+  // デッキのレーティング・勝率を計算
+  const deckStats = useMemo(() => {
+    const stats: Record<string, { rating: number; wins: number; losses: number; rank: number }> = {};
+    
+    decks.forEach(deck => {
+      const deckBattles = battles.filter(b => b.deck1Id === deck.id || b.deck2Id === deck.id);
+      let wins = 0;
+      let losses = 0;
+      
+      deckBattles.forEach(battle => {
+        if (battle.deck1Id === deck.id) {
+          wins += battle.deck1Wins;
+          losses += battle.deck2Wins;
+        } else {
+          wins += battle.deck2Wins;
+          losses += battle.deck1Wins;
+        }
+      });
+      
+      stats[deck.id] = {
+        rating: deck.rating || 1500,
+        wins,
+        losses,
+        rank: 0
+      };
+    });
+    
+    // ランキング計算
+    const sortedDecks = Object.entries(stats).sort((a, b) => b[1].rating - a[1].rating);
+    sortedDecks.forEach(([deckId], index) => {
+      stats[deckId].rank = index + 1;
+    });
+    
+    return stats;
+  }, [decks, battles]);
+
   const getDeckById = (deckId: string | null) => {
     if (!deckId) return null;
     return decks.find(d => d.id === deckId);
+  };
+
+  const getDeckStats = (deckId: string | null) => {
+    if (!deckId) return null;
+    return deckStats[deckId];
+  };
+
+  const getWinRate = (deckId: string) => {
+    const stats = deckStats[deckId];
+    if (!stats) return 0;
+    const total = stats.wins + stats.losses;
+    if (total === 0) return 0;
+    return (stats.wins / total * 100).toFixed(1);
   };
 
   const handleSubmit = async () => {
@@ -70,6 +119,15 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
     if (remaining === 2) return '準決勝';
     if (remaining === 3) return '準々決勝';
     return `${roundIndex + 1}回戦`;
+  };
+
+  // アップセット判定（下位が上位を倒した）
+  const isUpset = (winnerId: string | null, loserId: string | null) => {
+    if (!winnerId || !loserId) return false;
+    const winnerStats = deckStats[winnerId];
+    const loserStats = deckStats[loserId];
+    if (!winnerStats || !loserStats) return false;
+    return winnerStats.rank > loserStats.rank && loserStats.rank - winnerStats.rank >= 3;
   };
 
   return (
@@ -131,7 +189,7 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
         paddingBottom: '20px'
       }}>
         {tournament.bracket.winnersBracket.map((round, roundIndex) => (
-          <div key={roundIndex} style={{ minWidth: '320px', flex: '0 0 auto' }}>
+          <div key={roundIndex} style={{ minWidth: '360px', flex: '0 0 auto' }}>
             <div style={{
               backgroundColor: '#f3f4f6',
               padding: '12px 20px',
@@ -149,8 +207,11 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
               {round.matches.map((match) => {
                 const deck1 = getDeckById(match.deck1Id);
                 const deck2 = getDeckById(match.deck2Id);
+                const stats1 = getDeckStats(match.deck1Id);
+                const stats2 = getDeckStats(match.deck2Id);
                 const canPlay = match.status === 'pending' && deck1 && deck2;
                 const isCompleted = match.status === 'completed';
+                const hasUpset = isCompleted && isUpset(match.winnerId, match.winnerId === match.deck1Id ? match.deck2Id : match.deck1Id);
                 
                 return (
                   <div
@@ -195,6 +256,22 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
                       </div>
                     )}
 
+                    {hasUpset && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '-12px',
+                        left: '12px',
+                        backgroundColor: '#f59e0b',
+                        color: 'white',
+                        padding: '4px 12px',
+                        borderRadius: '12px',
+                        fontSize: '12px',
+                        fontWeight: 'bold'
+                      }}>
+                        🔥 番狂わせ！
+                      </div>
+                    )}
+
                     {/* デッキ1 */}
                     <div style={{
                       display: 'flex',
@@ -206,28 +283,56 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
                       border: match.winnerId === match.deck1Id ? '2px solid #10b981' : '1px solid #e5e7eb',
                       marginBottom: '8px'
                     }}>
-                      {deck1 ? (
+                      {deck1 && stats1 ? (
                         <>
-                          <img
-                            src={deck1.imageUrl || '/placeholder-deck.png'}
-                            alt={deck1.name}
-                            style={{ 
-                              width: '50px', 
-                              height: '50px', 
-                              objectFit: 'cover',
-                              borderRadius: '6px',
-                              border: '2px solid #d1d5db',
-                              flexShrink: 0
-                            }}
-                          />
-                          <span style={{ 
-                            fontWeight: 'bold', 
-                            flex: 1,
-                            fontSize: '15px',
-                            color: '#1f2937'
-                          }}>
-                            {deck1.name}
-                          </span>
+                          <div style={{ position: 'relative' }}>
+                            <img
+                              src={deck1.imageUrl || '/placeholder-deck.png'}
+                              alt={deck1.name}
+                              style={{ 
+                                width: '50px', 
+                                height: '50px', 
+                                objectFit: 'cover',
+                                borderRadius: '6px',
+                                border: '2px solid #d1d5db',
+                                flexShrink: 0
+                              }}
+                            />
+                            <div style={{
+                              position: 'absolute',
+                              top: '-6px',
+                              right: '-6px',
+                              backgroundColor: stats1.rank <= 3 ? '#fbbf24' : '#6b7280',
+                              color: 'white',
+                              borderRadius: '50%',
+                              width: '22px',
+                              height: '22px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '11px',
+                              fontWeight: 'bold',
+                              border: '2px solid white'
+                            }}>
+                              {stats1.rank}
+                            </div>
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ 
+                              fontWeight: 'bold', 
+                              fontSize: '15px',
+                              color: '#1f2937'
+                            }}>
+                              {deck1.name}
+                            </div>
+                            <div style={{ 
+                              fontSize: '11px', 
+                              color: '#6b7280',
+                              marginTop: '2px'
+                            }}>
+                              R:{stats1.rating} | {getWinRate(deck1.id)}% ({stats1.wins}-{stats1.losses})
+                            </div>
+                          </div>
                           {match.winnerId === deck1.id && (
                             <span style={{ fontSize: '24px' }}>🏆</span>
                           )}
@@ -269,28 +374,56 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
                       backgroundColor: match.winnerId === match.deck2Id ? '#d1fae5' : '#f9fafb',
                       border: match.winnerId === match.deck2Id ? '2px solid #10b981' : '1px solid #e5e7eb'
                     }}>
-                      {deck2 ? (
+                      {deck2 && stats2 ? (
                         <>
-                          <img
-                            src={deck2.imageUrl || '/placeholder-deck.png'}
-                            alt={deck2.name}
-                            style={{ 
-                              width: '50px', 
-                              height: '50px', 
-                              objectFit: 'cover',
-                              borderRadius: '6px',
-                              border: '2px solid #d1d5db',
-                              flexShrink: 0
-                            }}
-                          />
-                          <span style={{ 
-                            fontWeight: 'bold', 
-                            flex: 1,
-                            fontSize: '15px',
-                            color: '#1f2937'
-                          }}>
-                            {deck2.name}
-                          </span>
+                          <div style={{ position: 'relative' }}>
+                            <img
+                              src={deck2.imageUrl || '/placeholder-deck.png'}
+                              alt={deck2.name}
+                              style={{ 
+                                width: '50px', 
+                                height: '50px', 
+                                objectFit: 'cover',
+                                borderRadius: '6px',
+                                border: '2px solid #d1d5db',
+                                flexShrink: 0
+                              }}
+                            />
+                            <div style={{
+                              position: 'absolute',
+                              top: '-6px',
+                              right: '-6px',
+                              backgroundColor: stats2.rank <= 3 ? '#fbbf24' : '#6b7280',
+                              color: 'white',
+                              borderRadius: '50%',
+                              width: '22px',
+                              height: '22px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '11px',
+                              fontWeight: 'bold',
+                              border: '2px solid white'
+                            }}>
+                              {stats2.rank}
+                            </div>
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ 
+                              fontWeight: 'bold', 
+                              fontSize: '15px',
+                              color: '#1f2937'
+                            }}>
+                              {deck2.name}
+                            </div>
+                            <div style={{ 
+                              fontSize: '11px', 
+                              color: '#6b7280',
+                              marginTop: '2px'
+                            }}>
+                              R:{stats2.rating} | {getWinRate(deck2.id)}% ({stats2.wins}-{stats2.losses})
+                            </div>
+                          </div>
                           {match.winnerId === deck2.id && (
                             <span style={{ fontSize: '24px' }}>🏆</span>
                           )}
@@ -402,7 +535,8 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {[selectedMatch.deck1Id, selectedMatch.deck2Id].map((deckId) => {
                   const deck = getDeckById(deckId);
-                  if (!deck) return null;
+                  const stats = getDeckStats(deckId);
+                  if (!deck || !stats) return null;
 
                   return (
                     <button
@@ -447,10 +581,10 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
                       />
                       <div style={{ flex: 1, textAlign: 'left' }}>
                         <div style={{ fontWeight: 'bold', fontSize: '18px', color: '#1f2937' }}>
-                          {deck.name}
+                          {deck.name} <span style={{ fontSize: '14px', color: '#6b7280' }}>#{stats.rank}</span>
                         </div>
                         <div style={{ fontSize: '13px', color: '#6b7280', marginTop: '4px' }}>
-                          {deck.colors.join(', ')}
+                          レート:{stats.rating} | 勝率:{getWinRate(deckId)}%
                         </div>
                       </div>
                       {selectedWinner === deckId && (
