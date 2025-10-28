@@ -241,364 +241,244 @@ const Analysis: React.FC<AnalysisProps> = ({ project, decks, battles, onBack }) 
   const rivalries = findRivalries();
   const rankings = calculateRankings();
 
-  // セルの色を決定
-  const getCellColor = (winRate: number, totalGames: number) => {
-    if (totalGames === 0) return '#f8f9fa';
-    if (winRate >= 70) return '#d4edda';
-    if (winRate >= 60) return '#d1ecf1';
-    if (winRate >= 40) return '#fff3cd';
-    return '#f8d7da';
-  };
-
-  // セルのテキスト色を決定
-  const getCellTextColor = (winRate: number, totalGames: number) => {
-    if (totalGames === 0) return '#6c757d';
-    if (winRate >= 60) return '#155724';
-    if (winRate >= 40) return '#856404';
-    return '#721c24';
-  };
-
-  // 勝率に応じた矢印の太さを計算
-  const getArrowWidth = (winRate: number) => {
-    if (winRate >= 80) return 4;
-    if (winRate >= 70) return 3.5;
-    if (winRate >= 60) return 3;
-    return 2.5;
-  };
-
-  // 勝率に応じた矢印の色を計算
-  const getArrowColor = (winRate: number) => {
-    if (winRate >= 80) return '#0056b3'; // 濃い青
-    if (winRate >= 70) return '#007bff'; // 通常の青
-    if (winRate >= 60) return '#17a2b8'; // シアン系
-    return '#6c757d'; // グレー
-  };
-
-  // サイクルのSVG描画（3-5すくみに対応）
-  const renderCycleSVG = (cycle: CycleData, index: number) => {
-    const size = cycle.decks.length;
-    const centerX = 150;
-    const centerY = 120;
-    const radius = 80;
-
-    // デッキの配置位置を計算
-    const positions = cycle.decks.map((_, i) => {
-      const angle = (i * 2 * Math.PI) / size - Math.PI / 2; // -90度から開始
-      return {
-        x: centerX + radius * Math.cos(angle),
-        y: centerY + radius * Math.sin(angle)
-      };
-    });
-
-    return (
-      <svg width="300" height="260" viewBox="0 0 300 260">
-        {/* 背景の多角形 */}
-        <polygon
-          points={positions.map(p => `${p.x},${p.y}`).join(' ')}
-          fill="none"
-          stroke="#ddd"
-          strokeWidth="2"
-        />
-
-        {/* 矢印の定義（複数の色に対応） */}
-        <defs>
-          {[
-            { id: 'arrow-strong', color: '#0056b3' },
-            { id: 'arrow-medium', color: '#007bff' },
-            { id: 'arrow-weak', color: '#17a2b8' },
-            { id: 'arrow-veryWeak', color: '#6c757d' }
-          ].map(arrow => (
-            <marker key={arrow.id} id={arrow.id} markerWidth="10" markerHeight="7" 
-              refX="0" refY="3.5" orient="auto">
-              <polygon points="0 0, 10 3.5, 0 7" fill={arrow.color} />
-            </marker>
-          ))}
-        </defs>
-
-        {/* 矢印線 */}
-        {cycle.decks.map((_, i) => {
-          const nextIndex = (i + 1) % size;
-          const start = positions[i];
-          const end = positions[nextIndex];
-          
-          // 矢印を短くするための計算
-          const dx = end.x - start.x;
-          const dy = end.y - start.y;
-          const length = Math.sqrt(dx * dx + dy * dy);
-          const shortenStart = 25; // 開始点からの距離
-          const shortenEnd = 25; // 終了点からの距離
-          
-          const startX = start.x + (dx / length) * shortenStart;
-          const startY = start.y + (dy / length) * shortenStart;
-          const endX = end.x - (dx / length) * shortenEnd;
-          const endY = end.y - (dy / length) * shortenEnd;
-
-          const winRate = cycle.winRates[i];
-          const arrowWidth = getArrowWidth(winRate);
-          const arrowColor = getArrowColor(winRate);
-          
-          const markerUrl = winRate >= 80 ? 'url(#arrow-strong)' :
-                           winRate >= 70 ? 'url(#arrow-medium)' :
-                           winRate >= 60 ? 'url(#arrow-weak)' :
-                           'url(#arrow-veryWeak)';
-
-          return (
-            <g key={i}>
-              <line
-                x1={startX}
-                y1={startY}
-                x2={endX}
-                y2={endY}
-                stroke={arrowColor}
-                strokeWidth={arrowWidth}
-                markerEnd={markerUrl}
-              />
-              {/* 勝率表示 */}
-              <text
-                x={(startX + endX) / 2}
-                y={(startY + endY) / 2 - 5}
-                textAnchor="middle"
-                fontSize="11"
-                fill={arrowColor}
-                fontWeight="bold"
-              >
-                {winRate.toFixed(0)}%
-              </text>
-            </g>
-          );
-        })}
-
-        {/* デッキ名とアイコン */}
-        {cycle.decks.map((deck, i) => {
-          const pos = positions[i];
-          return (
-            <g key={i}>
-              {/* 背景円 */}
-              <circle
-                cx={pos.x}
-                cy={pos.y}
-                r="20"
-                fill="white"
-                stroke="#007bff"
-                strokeWidth="2"
-              />
-              {/* デッキ名 */}
-              <text
-                x={pos.x}
-                y={pos.y + 35}
-                textAnchor="middle"
-                fontSize="12"
-                fontWeight="bold"
-              >
-                {deck.name}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    );
-  };
-
   return (
-    <div style={{ padding: '20px' }}>
+    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
       {/* ヘッダー */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: '20px',
-        paddingBottom: '15px',
-        borderBottom: '1px solid #ddd'
-      }}>
-        <div>
-          <h2>{project.name} - 詳細分析</h2>
-          <p style={{ color: '#666', margin: '5px 0' }}>
-            {decks.length}デッキ, {battles.length}対戦, {battles.reduce((sum, b) => sum + b.deck1Wins + b.deck2Wins, 0)}ゲーム
-          </p>
-        </div>
-        <button 
-          onClick={onBack}
-          style={{ 
-            padding: '8px 16px', 
-            backgroundColor: '#6c757d', 
-            color: 'white', 
-            border: 'none', 
-            borderRadius: '4px', 
-            cursor: 'pointer' 
-          }}
-        >
-          戻る
+      <div style={{ marginBottom: '20px' }}>
+        <button onClick={onBack} style={{ 
+          color: '#007bff', 
+          background: 'none', 
+          border: 'none', 
+          cursor: 'pointer', 
+          fontSize: '16px',
+          padding: '5px 0',
+          marginBottom: '10px'
+        }}>
+          ← 戻る
         </button>
+        <h2 style={{ margin: 0 }}>戦績分析</h2>
       </div>
 
       {/* タブナビゲーション */}
       <div style={{ 
         display: 'flex', 
-        borderBottom: '1px solid #ddd', 
+        gap: '10px', 
         marginBottom: '20px',
+        borderBottom: '2px solid #dee2e6',
         flexWrap: 'wrap'
       }}>
-        {[
-          { key: 'matrix', label: '相性マトリックス' },
-          { key: 'cycles', label: '循環関係' },
-          { key: 'rivalries', label: '拮抗デッキ' },
-          { key: 'rankings', label: 'デッキランキング' }
-        ].map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key as any)}
-            style={{
-              padding: '10px 20px',
-              border: 'none',
-              borderBottom: activeTab === tab.key ? '2px solid #007bff' : '2px solid transparent',
-              backgroundColor: 'transparent',
-              cursor: 'pointer',
-              fontWeight: activeTab === tab.key ? 'bold' : 'normal',
-              color: activeTab === tab.key ? '#007bff' : '#666'
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
+        <button
+          onClick={() => setActiveTab('matrix')}
+          style={{
+            padding: '10px 20px',
+            border: 'none',
+            borderBottom: activeTab === 'matrix' ? '3px solid #007bff' : '3px solid transparent',
+            backgroundColor: 'transparent',
+            color: activeTab === 'matrix' ? '#007bff' : '#6c757d',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'matrix' ? 'bold' : 'normal',
+            fontSize: '15px'
+          }}
+        >
+          相性
+        </button>
+        <button
+          onClick={() => setActiveTab('cycles')}
+          style={{
+            padding: '10px 20px',
+            border: 'none',
+            borderBottom: activeTab === 'cycles' ? '3px solid #007bff' : '3px solid transparent',
+            backgroundColor: 'transparent',
+            color: activeTab === 'cycles' ? '#007bff' : '#6c757d',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'cycles' ? 'bold' : 'normal',
+            fontSize: '15px'
+          }}
+        >
+          すくみ
+        </button>
+        <button
+          onClick={() => setActiveTab('rivalries')}
+          style={{
+            padding: '10px 20px',
+            border: 'none',
+            borderBottom: activeTab === 'rivalries' ? '3px solid #007bff' : '3px solid transparent',
+            backgroundColor: 'transparent',
+            color: activeTab === 'rivalries' ? '#007bff' : '#6c757d',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'rivalries' ? 'bold' : 'normal',
+            fontSize: '15px'
+          }}
+        >
+          拮抗
+        </button>
+        <button
+          onClick={() => setActiveTab('rankings')}
+          style={{
+            padding: '10px 20px',
+            border: 'none',
+            borderBottom: activeTab === 'rankings' ? '3px solid #007bff' : '3px solid transparent',
+            backgroundColor: 'transparent',
+            color: activeTab === 'rankings' ? '#007bff' : '#6c757d',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'rankings' ? 'bold' : 'normal',
+            fontSize: '15px'
+          }}
+        >
+          ランキング
+        </button>
       </div>
 
-      {/* 相性マトリックス */}
+      {/* 相性マトリックス - スマホ対応版 */}
       {activeTab === 'matrix' && (
         <div>
-          <h3>相性マトリックス</h3>
-          <p style={{ color: '#666', marginBottom: '15px' }}>
-            縦軸が使用デッキ、横軸が対戦相手です。数値は勝率(%)を表示しています。
+          <h3 style={{ fontSize: '18px', marginBottom: '10px' }}>相性ヒートマップ</h3>
+          <p style={{ color: '#666', marginBottom: '15px', fontSize: '13px' }}>
+            各デッキの相性を色で表示。<span style={{ color: '#28a745', fontWeight: 'bold' }}>緑</span>=有利、<span style={{ color: '#dc3545', fontWeight: 'bold' }}>赤</span>=不利
           </p>
-          
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ 
-              width: '100%', 
-              borderCollapse: 'collapse', 
-              minWidth: '600px' 
+
+          {Object.keys(compatibility).length > 0 ? (
+            <div style={{ 
+              display: 'grid', 
+              gap: '12px'
             }}>
-              <thead>
-                <tr>
-                  <th style={{ 
-                    padding: '10px', 
-                    border: '1px solid #ddd', 
-                    backgroundColor: '#f8f9fa',
-                    position: 'sticky',
-                    left: 0,
-                    zIndex: 10
-                  }}>
-                    使用デッキ \ 対戦相手
-                  </th>
-                  {decks.map(deck => (
-                    <th key={deck.id} style={{ 
-                      padding: '10px', 
-                      border: '1px solid #ddd', 
-                      backgroundColor: '#f8f9fa',
-                      minWidth: '100px'
-                    }}>
-                      {deck.name}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {decks.map(deck => (
-                  <tr key={deck.id}>
-                    <td style={{ 
-                      padding: '10px', 
-                      border: '1px solid #ddd', 
-                      fontWeight: 'bold',
-                      backgroundColor: '#f8f9fa',
-                      position: 'sticky',
-                      left: 0,
-                      zIndex: 5
-                    }}>
-                      {deck.name}
-                    </td>
-                    {decks.map(opponent => {
-                      if (deck.id === opponent.id) {
-                        return (
-                          <td key={opponent.id} style={{ 
-                            padding: '10px', 
-                            border: '1px solid #ddd',
-                            backgroundColor: '#e9ecef',
-                            textAlign: 'center'
-                          }}>
-                            -
-                          </td>
-                        );
-                      }
+              {decks.map(deck => {
+                const deckCompat = compatibility[deck.id];
+                if (!deckCompat) return null;
 
-                      const data = compatibility[deck.id]?.[opponent.id];
-                      const winRate = data?.winRate || 0;
-                      const totalGames = data?.totalGames || 0;
+                // このデッキの全対戦相手との勝率を計算
+                const matchups = decks
+                  .filter(opp => opp.id !== deck.id)
+                  .map(opponent => ({
+                    opponent,
+                    ...deckCompat[opponent.id]
+                  }))
+                  .filter(m => m.totalGames > 0);
 
-                      return (
-                        <td key={opponent.id} style={{ 
-                          padding: '10px', 
-                          border: '1px solid #ddd',
-                          backgroundColor: getCellColor(winRate, totalGames),
-                          color: getCellTextColor(winRate, totalGames),
-                          textAlign: 'center',
-                          fontWeight: totalGames > 0 ? 'bold' : 'normal'
-                        }}>
-                          {totalGames > 0 ? (
-                            <>
-                              <div>{winRate.toFixed(1)}%</div>
-                              <div style={{ fontSize: '11px', opacity: 0.7 }}>
-                                ({data.wins}-{data.losses})
+                if (matchups.length === 0) return null;
+
+                return (
+                  <div 
+                    key={deck.id} 
+                    style={{ 
+                      backgroundColor: 'white',
+                      border: '1px solid #ddd',
+                      borderRadius: '8px',
+                      padding: '12px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                    }}
+                  >
+                    {/* デッキ名 */}
+                    <div style={{ 
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      marginBottom: '10px',
+                      paddingBottom: '8px',
+                      borderBottom: '2px solid #f0f0f0'
+                    }}>
+                      {deck.imageUrl && (
+                        <img 
+                          src={deck.imageUrl} 
+                          alt={deck.name}
+                          style={{ 
+                            width: 32, 
+                            height: 32, 
+                            borderRadius: '6px',
+                            objectFit: 'cover',
+                            border: '1px solid #ddd'
+                          }}
+                        />
+                      )}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 'bold', fontSize: '15px' }}>
+                          {deck.name}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#888' }}>
+                          {deck.colors.join(', ')}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 対戦相手一覧 */}
+                    <div style={{ display: 'grid', gap: '6px' }}>
+                      {matchups
+                        .sort((a, b) => b.winRate - a.winRate)
+                        .map(matchup => {
+                          const getColor = (winRate: number) => {
+                            if (winRate >= 65) return '#28a745';
+                            if (winRate >= 55) return '#90ee90';
+                            if (winRate >= 45) return '#ffc107';
+                            if (winRate >= 35) return '#ff8c69';
+                            return '#dc3545';
+                          };
+
+                          const getIcon = (winRate: number) => {
+                            if (winRate >= 65) return '✓✓';
+                            if (winRate >= 55) return '✓';
+                            if (winRate >= 45) return '=';
+                            if (winRate >= 35) return '✗';
+                            return '✗✗';
+                          };
+
+                          return (
+                            <div
+                              key={matchup.opponent.id}
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: '28px 1fr 60px',
+                                alignItems: 'center',
+                                gap: '8px',
+                                padding: '6px 8px',
+                                borderRadius: '6px',
+                                backgroundColor: '#f8f9fa',
+                                fontSize: '13px'
+                              }}
+                            >
+                              {/* アイコン */}
+                              <div style={{ 
+                                textAlign: 'center',
+                                fontWeight: 'bold',
+                                color: getColor(matchup.winRate),
+                                fontSize: '14px'
+                              }}>
+                                {getIcon(matchup.winRate)}
                               </div>
-                            </>
-                          ) : (
-                            <span style={{ opacity: 0.5 }}>未対戦</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
 
-          <div style={{ 
-            marginTop: '15px', 
-            padding: '10px', 
-            backgroundColor: '#f8f9fa', 
-            borderRadius: '4px' 
-          }}>
-            <h4 style={{ margin: '0 0 10px 0' }}>凡例</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '20px', height: '20px', backgroundColor: '#d4edda', border: '1px solid #ddd' }} />
-                <span>有利 (70%+)</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '20px', height: '20px', backgroundColor: '#d1ecf1', border: '1px solid #ddd' }} />
-                <span>やや有利 (60-69%)</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '20px', height: '20px', backgroundColor: '#fff3cd', border: '1px solid #ddd' }} />
-                <span>五分 (40-59%)</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '20px', height: '20px', backgroundColor: '#f8d7da', border: '1px solid #ddd' }} />
-                <span>不利 (-39%)</span>
-              </div>
+                              {/* 相手デッキ名 */}
+                              <div style={{ 
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}>
+                                {matchup.opponent.name}
+                              </div>
+
+                              {/* 勝率 */}
+                              <div style={{ 
+                                textAlign: 'right',
+                                fontWeight: 'bold',
+                                color: getColor(matchup.winRate),
+                                fontSize: '14px'
+                              }}>
+                                {matchup.winRate.toFixed(0)}%
+                                <span style={{ 
+                                  fontSize: '10px',
+                                  color: '#999',
+                                  marginLeft: '3px'
+                                }}>
+                                  ({matchup.wins}-{matchup.losses})
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* 循環関係（N-すくみ） */}
-      {activeTab === 'cycles' && (
-        <div>
-          <h3>循環関係（じゃんけん構造）</h3>
-          <p style={{ color: '#666', marginBottom: '15px' }}>
-            A → B → C → A のような循環する有利不利関係を自動検出しています。
-            3すくみから5すくみまで対応しています。矢印の太さと色は勝率の強さを表します。
-          </p>
-
-          {cycles.length === 0 ? (
+          ) : (
             <div style={{ 
               padding: '40px', 
               textAlign: 'center', 
@@ -606,70 +486,105 @@ const Analysis: React.FC<AnalysisProps> = ({ project, decks, battles, onBack }) 
               border: '1px solid #dee2e6', 
               borderRadius: '8px' 
             }}>
-              <p style={{ color: '#6c757d', fontSize: '18px' }}>循環関係が見つかりませんでした。</p>
-              <p style={{ color: '#6c757d' }}>
-                各デッキ間で2戦以上かつ55%以上の勝率が必要です。
-              </p>
+              <p style={{ color: '#6c757d', fontSize: '16px' }}>対戦データがありません。</p>
             </div>
-          ) : (
-            <div style={{ display: 'grid', gap: '20px' }}>
+          )}
+        </div>
+      )}
+
+      {/* すくみ関係 */}
+      {activeTab === 'cycles' && (
+        <div>
+          <h3>すくみ関係</h3>
+          <p style={{ color: '#666', marginBottom: '15px' }}>
+            3すくみ以上の関係を自動検出。A→B→C→Aのような循環的な相性関係を表示します。
+          </p>
+
+          {cycles.length > 0 ? (
+            <div style={{ display: 'grid', gap: '15px' }}>
               {cycles.map((cycle, index) => (
                 <div key={index} style={{ 
-                  border: '1px solid #ddd', 
-                  borderRadius: '8px', 
-                  padding: '20px',
+                  padding: '20px', 
+                  border: '2px solid #007bff', 
+                  borderRadius: '8px',
                   backgroundColor: 'white',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
                 }}>
-                  <h4 style={{ margin: '0 0 15px 0' }}>
-                    {cycle.decks.length}すくみ #{index + 1} 
-                    <span style={{ 
-                      marginLeft: '10px', 
-                      fontSize: '14px', 
-                      color: '#007bff',
-                      fontWeight: 'normal' 
-                    }}>
-                      (平均勝率: {cycle.avgWinRate.toFixed(1)}%)
-                    </span>
-                  </h4>
-                  
                   <div style={{ 
                     display: 'flex', 
-                    justifyContent: 'center', 
                     alignItems: 'center',
-                    minHeight: '260px'
+                    gap: '10px',
+                    marginBottom: '15px' 
                   }}>
-                    {renderCycleSVG(cycle, index)}
+                    <div style={{ 
+                      fontSize: '24px', 
+                      fontWeight: 'bold',
+                      color: '#007bff'
+                    }}>
+                      {cycle.decks.length}すくみ
+                    </div>
+                    <div style={{ 
+                      fontSize: '14px', 
+                      color: '#666',
+                      padding: '4px 10px',
+                      backgroundColor: '#e7f3ff',
+                      borderRadius: '4px'
+                    }}>
+                      平均勝率: {cycle.avgWinRate.toFixed(1)}%
+                    </div>
                   </div>
 
                   <div style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: `repeat(${cycle.decks.length}, 1fr)`, 
-                    gap: '10px',
-                    marginTop: '15px'
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    gap: '10px'
                   }}>
                     {cycle.decks.map((deck, i) => {
-                      const nextIndex = (i + 1) % cycle.decks.length;
-                      const nextDeck = cycle.decks[nextIndex];
+                      const nextDeck = cycle.decks[(i + 1) % cycle.decks.length];
                       const winRate = cycle.winRates[i];
-                      
+
                       return (
-                        <div key={i} style={{ 
-                          textAlign: 'center', 
-                          padding: '8px', 
-                          backgroundColor: '#f8f9fa', 
-                          borderRadius: '4px' 
-                        }}>
-                          <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{deck.name}</div>
-                          <div style={{ fontSize: '12px', color: getArrowColor(winRate) }}>
-                            vs {nextDeck.name}
-                          </div>
+                        <div key={i}>
                           <div style={{ 
-                            fontSize: '14px', 
-                            fontWeight: 'bold',
-                            color: getArrowColor(winRate) 
+                            display: 'flex', 
+                            alignItems: 'center',
+                            gap: '15px',
+                            padding: '12px',
+                            backgroundColor: '#f8f9fa',
+                            borderRadius: '6px'
                           }}>
-                            {winRate.toFixed(1)}%
+                            {/* 現在のデッキ */}
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 'bold', fontSize: '15px' }}>
+                                {deck.name}
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#666' }}>
+                                {deck.colors.join(', ')}
+                              </div>
+                            </div>
+
+                            {/* 勝率 */}
+                            <div style={{ 
+                              padding: '6px 12px',
+                              backgroundColor: '#28a745',
+                              color: 'white',
+                              borderRadius: '4px',
+                              fontWeight: 'bold',
+                              fontSize: '14px',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {winRate.toFixed(0)}% →
+                            </div>
+
+                            {/* 次のデッキ */}
+                            <div style={{ flex: 1, textAlign: 'right' }}>
+                              <div style={{ fontWeight: 'bold', fontSize: '15px' }}>
+                                {nextDeck.name}
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#666' }}>
+                                {nextDeck.colors.join(', ')}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       );
@@ -678,50 +593,20 @@ const Analysis: React.FC<AnalysisProps> = ({ project, decks, battles, onBack }) 
                 </div>
               ))}
             </div>
-          )}
-
-          <div style={{ 
-            marginTop: '15px', 
-            padding: '10px', 
-            backgroundColor: '#f8f9fa', 
-            borderRadius: '4px' 
-          }}>
-            <h4 style={{ margin: '0 0 10px 0' }}>矢印の意味</h4>
-            <div style={{ display: 'grid', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ 
-                  width: '40px', 
-                  height: '4px', 
-                  backgroundColor: '#0056b3' 
-                }} />
-                <span>非常に有利 (80%+) - 太い濃い青</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ 
-                  width: '40px', 
-                  height: '3.5px', 
-                  backgroundColor: '#007bff' 
-                }} />
-                <span>有利 (70-79%) - 太い青</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ 
-                  width: '40px', 
-                  height: '3px', 
-                  backgroundColor: '#17a2b8' 
-                }} />
-                <span>やや有利 (60-69%) - シアン</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ 
-                  width: '40px', 
-                  height: '2.5px', 
-                  backgroundColor: '#6c757d' 
-                }} />
-                <span>微有利 (55-59%) - グレー</span>
-              </div>
+          ) : (
+            <div style={{ 
+              padding: '40px', 
+              textAlign: 'center', 
+              backgroundColor: '#f8f9fa', 
+              border: '1px solid #dee2e6', 
+              borderRadius: '8px' 
+            }}>
+              <p style={{ color: '#6c757d', fontSize: '18px' }}>すくみ関係が見つかりませんでした。</p>
+              <p style={{ color: '#6c757d', fontSize: '14px', marginTop: '10px' }}>
+                （各対戦相手に2戦以上、55%以上の勝率で循環する関係を検出）
+              </p>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -730,138 +615,94 @@ const Analysis: React.FC<AnalysisProps> = ({ project, decks, battles, onBack }) 
         <div>
           <h3>拮抗デッキ</h3>
           <p style={{ color: '#666', marginBottom: '15px' }}>
-            勝率が拮抗している（35-65%の範囲）デッキペアを表示します。
-            実力が試される好カードです。
+            勝率が拮抗している（35-65%）デッキペアを表示。好勝負が期待できる組み合わせです。
           </p>
 
-          {rivalries.length === 0 ? (
-            <div style={{ 
-              padding: '40px', 
-              textAlign: 'center', 
-              backgroundColor: '#f8f9fa', 
-              border: '1px solid #dee2e6', 
-              borderRadius: '8px' 
-            }}>
-              <p style={{ color: '#6c757d', fontSize: '18px' }}>拮抗しているデッキペアが見つかりませんでした。</p>
-              <p style={{ color: '#6c757d' }}>
-                最低5戦以上のデータが必要です。
-              </p>
-            </div>
-          ) : (
+          {rivalries.length > 0 ? (
             <div style={{ display: 'grid', gap: '15px' }}>
               {rivalries.map((rivalry, index) => {
-                const balancePercent = 50 - rivalry.balance;
-                const isVeryClose = rivalry.balance <= 5;
-                
                 return (
                   <div key={index} style={{ 
-                    border: isVeryClose ? '2px solid #28a745' : '1px solid #ddd',
-                    borderRadius: '8px', 
-                    padding: '20px',
+                    padding: '20px', 
+                    border: '1px solid #ddd', 
+                    borderRadius: '8px',
                     backgroundColor: 'white',
-                    boxShadow: isVeryClose ? '0 4px 8px rgba(40,167,69,0.2)' : '0 2px 4px rgba(0,0,0,0.1)'
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.08)'
                   }}>
+                    {/* 対戦回数 */}
                     <div style={{ 
-                      display: 'flex', 
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginBottom: '15px'
+                      fontSize: '12px', 
+                      color: '#007bff',
+                      marginBottom: '10px',
+                      fontWeight: 'bold'
                     }}>
-                      <h4 style={{ margin: 0 }}>
-                        拮抗ペア #{index + 1}
-                        {isVeryClose && (
-                          <span style={{ 
-                            marginLeft: '10px',
-                            fontSize: '12px',
-                            backgroundColor: '#28a745',
-                            color: 'white',
-                            padding: '2px 8px',
-                            borderRadius: '12px'
-                          }}>
-                            超接戦
-                          </span>
-                        )}
-                      </h4>
-                      <div style={{ 
-                        fontSize: '14px',
-                        color: '#666'
-                      }}>
-                        総対戦数: {rivalry.totalGames}戦
-                      </div>
+                      総対戦数: {rivalry.totalGames}回
                     </div>
 
+                    {/* デッキ情報 */}
                     <div style={{ 
-                      display: 'grid',
-                      gridTemplateColumns: '1fr auto 1fr',
-                      gap: '20px',
-                      alignItems: 'center'
+                      display: 'flex', 
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '15px',
+                      marginBottom: '15px'
                     }}>
                       {/* デッキ1 */}
-                      <div style={{ 
-                        padding: '15px',
-                        backgroundColor: '#f8f9fa',
-                        borderRadius: '8px',
-                        textAlign: 'center'
-                      }}>
+                      <div style={{ flex: 1 }}>
                         <div style={{ 
-                          fontWeight: 'bold',
+                          fontWeight: 'bold', 
                           fontSize: '16px',
-                          marginBottom: '8px'
+                          marginBottom: '5px'
                         }}>
                           {rivalry.deck1.name}
                         </div>
                         <div style={{ 
-                          fontSize: '24px',
+                          fontSize: '13px',
+                          color: '#666',
+                          marginBottom: '8px'
+                        }}>
+                          {rivalry.deck1.colors.join(', ')}
+                        </div>
+                        <div style={{ 
+                          fontSize: '18px',
                           fontWeight: 'bold',
                           color: rivalry.deck1WinRate >= 50 ? '#28a745' : '#dc3545'
                         }}>
                           {rivalry.deck1WinRate.toFixed(1)}%
                         </div>
-                        <div style={{ 
-                          fontSize: '12px',
-                          color: '#666',
-                          marginTop: '4px'
-                        }}>
-                          {rivalry.deck1.colors.join(', ')}
-                        </div>
                       </div>
 
-                      {/* VS表示 */}
+                      {/* VS */}
                       <div style={{ 
-                        fontSize: '24px',
+                        fontSize: '20px', 
                         fontWeight: 'bold',
-                        color: '#007bff'
+                        color: '#999'
                       }}>
                         VS
                       </div>
 
                       {/* デッキ2 */}
-                      <div style={{ 
-                        padding: '15px',
-                        backgroundColor: '#f8f9fa',
-                        borderRadius: '8px',
-                        textAlign: 'center'
-                      }}>
+                      <div style={{ flex: 1, textAlign: 'right' }}>
                         <div style={{ 
-                          fontWeight: 'bold',
+                          fontWeight: 'bold', 
                           fontSize: '16px',
-                          marginBottom: '8px'
+                          marginBottom: '5px'
                         }}>
                           {rivalry.deck2.name}
                         </div>
                         <div style={{ 
-                          fontSize: '24px',
+                          fontSize: '13px',
+                          color: '#666',
+                          marginBottom: '8px'
+                        }}>
+                          {rivalry.deck2.colors.join(', ')}
+                        </div>
+                        <div style={{ 
+                          fontSize: '18px',
                           fontWeight: 'bold',
                           color: rivalry.deck2WinRate >= 50 ? '#28a745' : '#dc3545'
                         }}>
                           {rivalry.deck2WinRate.toFixed(1)}%
-                        </div>
-                        <div style={{ 
-                          fontSize: '12px',
-                          color: '#666',
-                          marginTop: '4px'
-                        }}>
-                          {rivalry.deck2.colors.join(', ')}
                         </div>
                       </div>
                     </div>
@@ -905,6 +746,19 @@ const Analysis: React.FC<AnalysisProps> = ({ project, decks, battles, onBack }) 
                   </div>
                 );
               })}
+            </div>
+          ) : (
+            <div style={{ 
+              padding: '40px', 
+              textAlign: 'center', 
+              backgroundColor: '#f8f9fa', 
+              border: '1px solid #dee2e6', 
+              borderRadius: '8px' 
+            }}>
+              <p style={{ color: '#6c757d', fontSize: '18px' }}>拮抗しているデッキペアが見つかりませんでした。</p>
+              <p style={{ color: '#6c757d', fontSize: '14px', marginTop: '10px' }}>
+                （5戦以上、35-65%の勝率範囲のペアを検出）
+              </p>
             </div>
           )}
         </div>
