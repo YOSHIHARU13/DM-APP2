@@ -17,11 +17,11 @@ import DeckForm from './DeckForm';
 import BattleForm from '../battle/BattleForm';
 import DeckDetail from './DeckDetail';
 import Analysis from '../analysis/Analysis';
-import TournamentForm from '../tournament/TournamentForm';
-import TournamentList from '../tournament/TournamentList';
-import TournamentDetail from '../tournament/TournamentDetail';
+import TournamentForm from 'components/tournament/TournamentForm';
+import TournamentList from 'components/tournament/TournamentList';
+import TournamentDetail from 'components/tournament/TournamentDetail';
 
-import { generateBracket, updateBracketWithResult, getFinalRankings } from '../../utils/tournamentUtils';
+import { generateBracket, updateBracketWithResult, getFinalRankings } from 'utils/tournamentUtils';
 // Eloレーティング計算
 const calculateEloRating = (currentRating: number, opponentRating: number, isWin: boolean, kFactor: number = 32): number => {
   const expectedScore = 1 / (1 + Math.pow(10, (opponentRating - currentRating) / 400));
@@ -462,7 +462,8 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
       const updatedBattles = [...battles, battleWithId];
       const newRatings = initializeDeckRatings(updatedBattles, decks);
       setDeckRatings(newRatings);
-    
+      
+      setShowBattleForm(false);
     } catch (error) {
       console.error('対戦結果の保存に失敗:', error);
       alert('対戦結果の保存に失敗しました');
@@ -747,7 +748,7 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
         <TournamentList
           tournaments={tournaments}
           decks={decks}
-          onTournamentSelect={(t) => {
+          onTournamentSelect={(t: Tournament) => {
             setSelectedTournament(t);
             setCurrentView('tournament_detail');
           }}
