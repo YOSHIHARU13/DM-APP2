@@ -70,37 +70,40 @@ const generateDoubleEliminationBracket = (deckIds: string[], seed: number): Tour
  */
 const createFirstRound = (deckIds: string[], seed: number): Round => {
   const rng = seedrandom(seed.toString());
-  
-  // 完全シャッフル（フィッシャー–イェーツ方式）
+
+  // Fisher-Yatesシャッフルで確実に全デッキをランダム化
   const shuffled = [...deckIds];
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
 
-  // 2のべき乗に合わせてBYEを追加
+  // 2の累乗にするためのBYE
   const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(shuffled.length)));
   const byeCount = nextPowerOf2 - shuffled.length;
   for (let i = 0; i < byeCount; i++) {
-    shuffled.push(null); // nullをBYEとして扱う
+    shuffled.push(`BYE-${i + 1}`);
   }
 
-  // マッチ作成
   const matches: Match[] = [];
   for (let i = 0; i < shuffled.length; i += 2) {
     const deck1Id = shuffled[i];
     const deck2Id = shuffled[i + 1];
 
-    const isBye = !deck1Id || !deck2Id;
-    const winnerId = deck1Id && !deck2Id ? deck1Id : !deck1Id && deck2Id ? deck2Id : null;
+    const isBye = deck1Id.startsWith('BYE') || deck2Id.startsWith('BYE');
+    const realWinner = deck1Id.startsWith('BYE')
+      ? deck2Id
+      : deck2Id.startsWith('BYE')
+      ? deck1Id
+      : null;
 
     matches.push({
       matchId: `r1-m${matches.length + 1}`,
-      deck1Id,
-      deck2Id,
+      deck1Id: deck1Id.startsWith('BYE') ? deck2Id : deck1Id,
+      deck2Id: deck2Id.startsWith('BYE') ? null : deck2Id,
       deck1Wins: 0,
       deck2Wins: 0,
-      winnerId,
+      winnerId: realWinner,
       loserId: null,
       status: isBye ? 'completed' : 'pending',
     });
@@ -114,36 +117,33 @@ const createFirstRound = (deckIds: string[], seed: number): Round => {
 };
 
 /**
- * 次ラウンド生成
- * 前ラウンドの勝者を自動で割り当て
+ * 次ラウンド生成（prevRoundの勝者が決まってなくても空マッチを作る）
  */
 const createNextRound = (prevRound: Round): Round => {
   const matchCount = Math.ceil(prevRound.matches.length / 2);
   const roundNumber = prevRound.roundNumber + 1;
 
-  const matches: Match[] = Array.from({ length: matchCount }, (_, i) => {
-    const prevMatch1 = prevRound.matches[i * 2];
-    const prevMatch2 = prevRound.matches[i * 2 + 1];
-
-    return {
-      matchId: `r${roundNumber}-m${i + 1}`,
-      deck1Id: prevMatch1?.winnerId || null,
-      deck2Id: prevMatch2?.winnerId || null,
-      deck1Wins: 0,
-      deck2Wins: 0,
-      winnerId: null,
-      loserId: null,
-      status: (!prevMatch1?.winnerId || !prevMatch2?.winnerId) ? 'pending' : 'pending',
-    };
-  });
+  const matches: Match[] = Array.from({ length: matchCount }, (_, i) => ({
+    matchId: `r${roundNumber}-m${i + 1}`,
+    deck1Id: null, // 勝者が決まったらここにセットされる
+    deck2Id: null,
+    deck1Wins: 0,
+    deck2Wins: 0,
+    winnerId: null,
+    loserId: null,
+    status: 'pending',
+  }));
 
   return {
     roundNumber,
-    roundName: getRoundName(matches.length),
+    roundName: getRoundName(matchCount),
     matches,
   };
 };
 
+/**
+ * ラウンド名生成
+ */
 const getRoundName = (matchCount: number) => {
   if (matchCount === 1) return '決勝';
   if (matchCount === 2) return '準決勝';
