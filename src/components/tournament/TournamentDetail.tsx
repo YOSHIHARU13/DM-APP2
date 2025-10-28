@@ -107,8 +107,13 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
                           <img
                             src={deck1.imageUrl || '/placeholder-deck.png'}
                             alt={deck1.name}
-                            className="w-16 h-16 object-cover rounded border-2 border-gray-300"
-                            style={{ aspectRatio: '1/1' }}
+                            style={{ 
+                              width: '64px', 
+                              height: '64px', 
+                              objectFit: 'cover',
+                              borderRadius: '8px',
+                              border: '2px solid #d1d5db'
+                            }}
                           />
                           <span className="font-bold flex-1 text-gray-800">{deck1.name}</span>
                           {match.winnerId === deck1.id && (
@@ -117,7 +122,13 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
                         </>
                       ) : (
                         <div className="flex items-center gap-3">
-                          <div className="w-16 h-16 bg-gray-200 rounded border-2 border-gray-300"></div>
+                          <div style={{ 
+                            width: '64px', 
+                            height: '64px', 
+                            backgroundColor: '#e5e7eb',
+                            borderRadius: '8px',
+                            border: '2px solid #d1d5db'
+                          }}></div>
                           <span className="text-gray-400 italic">シード待ち</span>
                         </div>
                       )}
@@ -134,8 +145,13 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
                           <img
                             src={deck2.imageUrl || '/placeholder-deck.png'}
                             alt={deck2.name}
-                            className="w-16 h-16 object-cover rounded border-2 border-gray-300"
-                            style={{ aspectRatio: '1/1' }}
+                            style={{ 
+                              width: '64px', 
+                              height: '64px', 
+                              objectFit: 'cover',
+                              borderRadius: '8px',
+                              border: '2px solid #d1d5db'
+                            }}
                           />
                           <span className="font-bold flex-1 text-gray-800">{deck2.name}</span>
                           {match.winnerId === deck2.id && (
@@ -144,7 +160,13 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
                         </>
                       ) : (
                         <div className="flex items-center gap-3">
-                          <div className="w-16 h-16 bg-gray-200 rounded border-2 border-gray-300"></div>
+                          <div style={{ 
+                            width: '64px', 
+                            height: '64px', 
+                            backgroundColor: '#e5e7eb',
+                            borderRadius: '8px',
+                            border: '2px solid #d1d5db'
+                          }}></div>
                           <span className="text-gray-400 italic">シード待ち</span>
                         </div>
                       )}
