@@ -43,6 +43,26 @@ const TournamentForm: React.FC<TournamentFormProps> = ({
       return;
     }
 
+    // ===== デバッグ開始 =====
+    console.log('=== トーナメント生成開始 ===');
+    console.log('選択デッキ数:', selectedDeckIds.length);
+    console.log('選択デッキID:', selectedDeckIds);
+    
+    const seed = Date.now();
+    console.log('シード値:', seed);
+    
+    const bracket = generateBracket(selectedDeckIds, format, seed);
+    
+    console.log('生成されたラウンド数:', bracket.winnersBracket.length);
+    bracket.winnersBracket.forEach((round, i) => {
+      console.log(`\n【${round.roundName}】 試合数: ${round.matches.length}`);
+      round.matches.forEach((match, j) => {
+        console.log(`  試合${j + 1}: ${match.deck1Id || 'null'} vs ${match.deck2Id || 'null'} (status: ${match.status}, winner: ${match.winnerId || 'null'})`);
+      });
+    });
+    console.log('=== デバッグ終了 ===\n');
+    // ===== デバッグ終了 =====
+
     onTournamentCreate({
       projectId,
       name: name.trim(),
