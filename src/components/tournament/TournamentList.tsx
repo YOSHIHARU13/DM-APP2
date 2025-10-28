@@ -6,6 +6,9 @@ import { Tournament, Deck } from '../../types';
 interface TournamentListProps {
   projectId: string;
   decks: Deck[];
+  tournaments: Tournament[];
+  onTournamentSelect: (tournament: Tournament) => void;
+  onCreateNew: () => void;
 }
 
 export const TournamentList: React.FC<TournamentListProps> = ({ projectId, decks }) => {
@@ -149,4 +152,5 @@ export const TournamentList: React.FC<TournamentListProps> = ({ projectId, decks
 };
 
 export default TournamentList;
+
 
