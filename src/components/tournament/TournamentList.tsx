@@ -138,9 +138,9 @@ export const TournamentList: React.FC<TournamentListProps> = ({ projectId, decks
               </div>
             )}
 
-            <div className="mt-4 text-sm text-gray-500">
-              {tournament.createdAt && new Date(tournament.createdAt.toDate()).toLocaleDateString('ja-JP')}
-            </div>
+           <div className="mt-4 text-sm text-gray-500">
+  {tournament.createdAt && new Date((tournament.createdAt as any).toDate()).toLocaleDateString('ja-JP')}
+</div>
           </div>
         );
       })}
@@ -149,3 +149,4 @@ export const TournamentList: React.FC<TournamentListProps> = ({ projectId, decks
 };
 
 export default TournamentList;
+
