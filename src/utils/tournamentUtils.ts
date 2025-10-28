@@ -15,26 +15,35 @@ export const generateBracket = (
 };
 
 /**
- * シングルエリミネーション生成（奇数対応済み）
+ * シングルエリミネーション生成（奇数対応＆ランダム完全シャッフル）
  */
 const generateSingleEliminationBracket = (deckIds: string[], seed: number): TournamentBracket => {
   const rng = seedrandom(seed.toString());
-  const shuffled = [...deckIds].sort(() => rng() - 0.5);
+  
+  // 完全シャッフル（Fisher-Yates）
+  const shuffled = [...deckIds];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
 
   const rounds: Round[] = [];
   let currentDecks: (string | null)[] = [...shuffled];
-
   let roundNumber = 1;
+
   while (currentDecks.length > 1) {
+    // 奇数ならBYE追加
+    if (currentDecks.length % 2 !== 0) currentDecks.push(null);
+
     const matches: Match[] = [];
     const nextRoundDecks: (string | null)[] = [];
 
     for (let i = 0; i < currentDecks.length; i += 2) {
-      const deck1 = currentDecks[i]!;
-      const deck2 = currentDecks[i + 1] ?? null;
+      const deck1 = currentDecks[i];
+      const deck2 = currentDecks[i + 1];
 
-      const isBye = !deck2;
-      const winner = isBye ? deck1 : null;
+      const isBye = !deck1 || !deck2;
+      const winner = !deck2 ? deck1 : !deck1 ? deck2 : null;
 
       matches.push({
         matchId: `r${roundNumber}-m${matches.length + 1}`,
