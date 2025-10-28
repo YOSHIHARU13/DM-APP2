@@ -2,21 +2,21 @@ import { TournamentBracket, Round, Match, TournamentFormat } from '../types';
 import seedrandom from 'seedrandom';
 
 /**
- * トーナメントブラケット生成
+ * トーナメントブラケット生成（シード固定ランダム）
  */
 export const generateBracket = (
   deckIds: string[],
-  format: TournamentFormat
+  format: TournamentFormat,
   seed: number
 ): TournamentBracket => {
-  if (uniqueDecks.length < 2) {
+  if (deckIds.length < 2) {
     throw new Error('2デッキ以上必要です');
   }
 
   if (format === 'single') {
-    return generateSingleEliminationBracket(deckIds, seed); // シード値を渡す
+    return generateSingleEliminationBracket(deckIds, seed);
   } else {
-    return generateDoubleEliminationBracket(deckIds, seed); // シード値を渡す
+    return generateDoubleEliminationBracket(deckIds, seed);
   }
 };
 
@@ -41,8 +41,8 @@ const generateSingleEliminationBracket = (deckIds: string[], seed: number): Tour
 /**
  * ダブルエリミネーション（簡易版）
  */
-const generateDoubleEliminationBracket = (deckIds: string[]): TournamentBracket => {
-  const winnersBracket = generateSingleEliminationBracket(deckIds).winnersBracket;
+const generateDoubleEliminationBracket = (deckIds: string[], seed: number): TournamentBracket => {
+  const winnersBracket = generateSingleEliminationBracket(deckIds, seed).winnersBracket;
   const losersBracket: Round[] = [];
 
   // 敗者側ラウンドを勝者側数に応じて生成
@@ -70,49 +70,50 @@ const generateDoubleEliminationBracket = (deckIds: string[]): TournamentBracket 
 };
 
 /**
- * 初戦を生成（シード処理含む）
+ * Fisher-Yates シャッフル（シード固定）
  */
+const shuffleDecks = (deckIds: string[], seed: number): string[] => {
+  const rng = seedrandom(seed.toString());
+  const array = [...deckIds];
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+};
+
 /**
- * 初戦を生成（ランダム組み合わせ & シード処理）
+ * 初戦を生成（BYE自動追加＆ランダム組み合わせ）
  */
 const createFirstRound = (deckIds: string[], seed: number): Round => {
-  const matches: Match[] = [];
+  let shuffled = shuffleDecks(deckIds, seed);
 
-  // --- ランダムにシャッフル ---
-const shuffled = [...deckIds].sort(() => seedrandom(seed.toString())() - 0.5);
-  
-  // --- 2のべき乗に調整（BYEを追加） ---
   const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(shuffled.length)));
   const byeCount = nextPowerOf2 - shuffled.length;
+
   for (let i = 0; i < byeCount; i++) {
     shuffled.push(`BYE-${i + 1}`);
   }
 
-  // --- マッチ生成 ---
+  const matches: Match[] = [];
   for (let i = 0; i < shuffled.length; i += 2) {
     const deck1Id = shuffled[i];
     const deck2Id = shuffled[i + 1] ?? null;
 
-    const isBye =
-      (deck1Id && deck1Id.startsWith('BYE')) ||
-      (deck2Id && deck2Id.startsWith('BYE'));
-
-    const realWinner =
-      deck1Id && deck1Id.startsWith('BYE')
-        ? deck2Id
-        : deck2Id && deck2Id.startsWith('BYE')
-        ? deck1Id
-        : null;
+    const winnerId =
+      deck1Id.startsWith('BYE') ? deck2Id :
+      deck2Id?.startsWith('BYE') ? deck1Id :
+      null;
 
     matches.push({
       matchId: `r1-m${matches.length + 1}`,
-      deck1Id: deck1Id?.startsWith('BYE') ? deck2Id : deck1Id,
+      deck1Id: deck1Id.startsWith('BYE') ? deck2Id : deck1Id,
       deck2Id: deck2Id?.startsWith('BYE') ? null : deck2Id,
       deck1Wins: 0,
       deck2Wins: 0,
-      winnerId: realWinner,
+      winnerId,
       loserId: null,
-      status: isBye ? 'completed' : 'pending',
+      status: winnerId ? 'completed' : 'pending',
     });
   }
 
@@ -123,9 +124,8 @@ const shuffled = [...deckIds].sort(() => seedrandom(seed.toString())() - 0.5);
   };
 };
 
-
 /**
- * 次のラウンド生成
+ * 次のラウンド生成（勝者が進む場所）
  */
 const createNextRound = (prevRound: Round): Round => {
   const matchCount = Math.ceil(prevRound.matches.length / 2);
@@ -155,6 +155,31 @@ const getRoundName = (matchCount: number): string => {
   if (matchCount === 2) return '準決勝';
   if (matchCount === 4) return '準々決勝';
   return `${matchCount * 2}デッキ戦`;
+};
+
+/**
+ * 勝者を次ラウンドに進める
+ */
+const advanceWinnerToNextRound = (
+  rounds: Round[],
+  currentRoundNumber: number,
+  currentMatch: Match,
+  winnerId: string
+) => {
+  const currentRoundIndex = rounds.findIndex((r) => r.roundNumber === currentRoundNumber);
+  if (currentRoundIndex === -1 || currentRoundIndex === rounds.length - 1) return;
+
+  const nextRound = rounds[currentRoundIndex + 1];
+  const currentIndex = rounds[currentRoundIndex].matches.findIndex(
+    (m) => m.matchId === currentMatch.matchId
+  );
+
+  const nextIndex = Math.floor(currentIndex / 2);
+  const nextMatch = nextRound.matches[nextIndex];
+  if (!nextMatch) return;
+
+  if (!nextMatch.deck1Id) nextMatch.deck1Id = winnerId;
+  else nextMatch.deck2Id = winnerId;
 };
 
 /**
@@ -190,32 +215,7 @@ export const updateBracketWithResult = (
 };
 
 /**
- * 勝者を次ラウンドに進める
- */
-const advanceWinnerToNextRound = (
-  rounds: Round[],
-  currentRoundNumber: number,
-  currentMatch: Match,
-  winnerId: string
-) => {
-  const currentRoundIndex = rounds.findIndex((r) => r.roundNumber === currentRoundNumber);
-  if (currentRoundIndex === -1 || currentRoundIndex === rounds.length - 1) return;
-
-  const nextRound = rounds[currentRoundIndex + 1];
-  const currentIndex = rounds[currentRoundIndex].matches.findIndex(
-    (m) => m.matchId === currentMatch.matchId
-  );
-
-  const nextIndex = Math.floor(currentIndex / 2);
-  const nextMatch = nextRound.matches[nextIndex];
-  if (!nextMatch) return;
-
-  if (!nextMatch.deck1Id) nextMatch.deck1Id = winnerId;
-  else nextMatch.deck2Id = winnerId;
-};
-
-/**
- * 最終順位を取得
+ * 最終順位
  */
 export const getFinalRankings = (bracket: TournamentBracket) => {
   const finalRound = bracket.winnersBracket.at(-1);
@@ -226,7 +226,6 @@ export const getFinalRankings = (bracket: TournamentBracket) => {
     thirdPlace: [] as string[],
   };
 
-  // 準決勝敗者を3位扱い
   const semiFinal = bracket.winnersBracket.at(-2);
   if (semiFinal) {
     for (const m of semiFinal.matches) {
