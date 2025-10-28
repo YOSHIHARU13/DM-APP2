@@ -771,18 +771,19 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
     );
   }
 
-  if (currentView === 'tournament_detail' && selectedTournament) {
-    return (
-      <TournamentDetail
-        tournament={selectedTournament}
-        decks={decks}
-        battles={battles}
-        onBack={() => setCurrentView('tournaments')}
-        onMatchComplete={handleMatchComplete}
-        onTournamentComplete={handleTournamentComplete}
-      />
-    );
-  }
+ if (currentView === 'tournament_detail' && selectedTournament) {
+  return (
+    <TournamentDetail
+      tournament={selectedTournament}
+      decks={decks}
+      battles={battles}
+      deckRatings={deckRatings}
+      onBack={() => setCurrentView('tournaments')}
+      onMatchComplete={handleMatchComplete}
+      onTournamentComplete={handleTournamentComplete}
+    />
+  );
+}
 
   return (
     <div style={{ padding: '20px' }}>
