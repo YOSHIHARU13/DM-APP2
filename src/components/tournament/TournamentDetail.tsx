@@ -5,6 +5,7 @@ interface TournamentDetailProps {
   tournament: Tournament;
   decks: Deck[];
   battles: Battle[];
+  deckRatings: {[deckId: string]: number};
   onBack: () => void;
   onMatchComplete: (tournamentId: string, matchId: string, battle: Omit<Battle, 'id'>) => Promise<void>;
   onTournamentComplete: (tournamentId: string) => Promise<void>;
@@ -14,6 +15,7 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
   tournament,
   decks,
   battles,
+  deckRatings,
   onBack,
   onMatchComplete,
   onTournamentComplete,
@@ -43,7 +45,7 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
       });
       
       stats[deck.id] = {
-        rating: deck.rating || 1500,
+        rating: deckRatings[deck.id] || 1500,
         wins,
         losses,
         rank: 0
@@ -57,7 +59,7 @@ export const TournamentDetail: React.FC<TournamentDetailProps> = ({
     });
     
     return stats;
-  }, [decks, battles]);
+  }, [decks, battles, deckRatings]);
 
   const getDeckById = (deckId: string | null) => {
     if (!deckId) return null;
