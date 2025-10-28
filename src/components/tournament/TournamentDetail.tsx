@@ -131,154 +131,158 @@ const TournamentDetail: React.FC<TournamentDetailProps> = ({
               {getRoundName(ri, tournament.bracket.winnersBracket.length)}
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:30 }}>
-             {round.matches.map(match => {
-  const deck1 = getDeckById(match.deck1Id);
-  const deck2 = getDeckById(match.deck2Id);
-  const deck1Stats = getDeckStats(match.deck1Id);
-  const deck2Stats = getDeckStats(match.deck2Id);
-  const isBye = !match.deck2Id;
-  const winnerId = match.winnerId;
-  const loserId = match.loserId;
-  const hasUpset = match.status === 'completed' && !isBye ? isUpset(winnerId, loserId) : false;
+              {round.matches.map(match => {
+                const deck1 = getDeckById(match.deck1Id);
+                const deck2 = getDeckById(match.deck2Id);
+                const deck1Stats = getDeckStats(match.deck1Id);
+                const deck2Stats = getDeckStats(match.deck2Id);
+                const isBye = !match.deck2Id;
+                const winnerId = match.winnerId;
+                const loserId = match.loserId;
+                const hasUpset = match.status === 'completed' && !isBye ? isUpset(winnerId, loserId) : false;
 
-  return (
-    <div key={match.matchId} onClick={() => handleMatchClick(match)}
-      style={{
-        backgroundColor:'white',
-        border:match.status==='pending'?'3px solid #3b82f6':'2px solid #d1d5db',
-        borderRadius:12, 
-        padding:16, 
-        boxShadow: match.status==='pending'?'0 4px 12px rgba(59,130,246,0.3)':'0 2px 4px rgba(0,0,0,0.1)',
-        cursor:(match.status==='pending' && deck1 && deck2)?'pointer':'default', 
-        position:'relative'
-      }}>
-      {match.status==='pending' && deck1 && deck2 && (
-        <div style={{position:'absolute',top:-12,right:12,backgroundColor:'#3b82f6',color:'white',padding:'4px 12px',borderRadius:12,fontSize:12,fontWeight:'bold'}}>
-          クリックして入力
-        </div>
-      )}
-      {hasUpset && (
-        <div style={{position:'absolute',top:-12,left:12,backgroundColor:'#f59e0b',color:'white',padding:'4px 12px',borderRadius:12,fontSize:12,fontWeight:'bold'}}>
-          🔥 番狂わせ！
-        </div>
-      )}
+                return (
+                  <div key={match.matchId} onClick={() => handleMatchClick(match)}
+                    style={{
+                      backgroundColor:'white',
+                      border:match.status==='pending'?'3px solid #3b82f6':'2px solid #d1d5db',
+                      borderRadius:12, 
+                      padding:16, 
+                      boxShadow: match.status==='pending'?'0 4px 12px rgba(59,130,246,0.3)':'0 2px 4px rgba(0,0,0,0.1)',
+                      cursor:(match.status==='pending' && deck1 && deck2)?'pointer':'default', 
+                      position:'relative'
+                    }}>
+                    {match.status==='pending' && deck1 && deck2 && (
+                      <div style={{position:'absolute',top:-12,right:12,backgroundColor:'#3b82f6',color:'white',padding:'4px 12px',borderRadius:12,fontSize:12,fontWeight:'bold'}}>
+                        クリックして入力
+                      </div>
+                    )}
+                    {hasUpset && (
+                      <div style={{position:'absolute',top:-12,left:12,backgroundColor:'#f59e0b',color:'white',padding:'4px 12px',borderRadius:12,fontSize:12,fontWeight:'bold'}}>
+                        🔥 番狂わせ！
+                      </div>
+                    )}
 
-      {/* デッキ1 */}
-      <div style={{ 
-        display:'flex', 
-        alignItems:'center', 
-        gap:12, 
-        padding:12, 
-        borderRadius:8, 
-        backgroundColor: winnerId===deck1?.id?'#d1fae5':'#f9fafb', 
-        border: winnerId===deck1?.id?'2px solid #10b981':'1px solid #e5e7eb', 
-        marginBottom:8 
-      }}>
-        {deck1?.imageUrl && (
-          <img 
-            src={deck1.imageUrl} 
-            alt={deck1.name}
-            style={{ 
-              width:60, 
-              height:60, 
-              borderRadius:8, 
-              objectFit:'cover', 
-              border:'2px solid #ddd',
-              flexShrink:0
-            }}
-          />
-        )}
-        <div style={{flex:1}}>
-          <div style={{fontWeight:'bold', fontSize:16, marginBottom:4}}>
-            {deck1 ? deck1.name : <span style={{ fontStyle:'italic', color:'#9ca3af' }}>シード待ち</span>}
-          </div>
-          {deck1Stats && (
-            <div style={{fontSize:12, color:'#666', display:'flex', gap:12, flexWrap:'wrap'}}>
-              <span style={{backgroundColor:'#dbeafe', padding:'2px 6px', borderRadius:4}}>
-                ⭐ {deck1Stats.rating}
-              </span>
-              <span style={{backgroundColor:'#dcfce7', padding:'2px 6px', borderRadius:4}}>
-                🎯 {getWinRate(deck1.id)}%
-              </span>
-              <span style={{backgroundColor:'#fef3c7', padding:'2px 6px', borderRadius:4}}>
-                🏆 {deck1Stats.wins}勝{deck1Stats.losses}敗
-              </span>
+                    {/* デッキ1 */}
+                    <div style={{ 
+                      display:'flex', 
+                      alignItems:'center', 
+                      gap:12, 
+                      padding:12, 
+                      borderRadius:8, 
+                      backgroundColor: winnerId===deck1?.id?'#d1fae5':'#f9fafb', 
+                      border: winnerId===deck1?.id?'2px solid #10b981':'1px solid #e5e7eb', 
+                      marginBottom:8 
+                    }}>
+                      {deck1?.imageUrl && (
+                        <img 
+                          src={deck1.imageUrl} 
+                          alt={deck1.name}
+                          style={{ 
+                            width:60, 
+                            height:60, 
+                            borderRadius:8, 
+                            objectFit:'cover', 
+                            border:'2px solid #ddd',
+                            flexShrink:0
+                          }}
+                        />
+                      )}
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:'bold', fontSize:16, marginBottom:4}}>
+                          {deck1 ? deck1.name : <span style={{ fontStyle:'italic', color:'#9ca3af' }}>シード待ち</span>}
+                        </div>
+                        {deck1 && deck1Stats && (
+                          <div style={{fontSize:12, color:'#666', display:'flex', gap:12, flexWrap:'wrap'}}>
+                            <span style={{backgroundColor:'#dbeafe', padding:'2px 6px', borderRadius:4}}>
+                              ⭐ {deck1Stats.rating}
+                            </span>
+                            <span style={{backgroundColor:'#dcfce7', padding:'2px 6px', borderRadius:4}}>
+                              🎯 {getWinRate(deck1.id)}%
+                            </span>
+                            <span style={{backgroundColor:'#fef3c7', padding:'2px 6px', borderRadius:4}}>
+                              🏆 {deck1Stats.wins}勝{deck1Stats.losses}敗
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      {winnerId===deck1?.id && <span style={{fontSize:28}}>🏆</span>}
+                    </div>
+
+                    <div style={{ 
+                      textAlign:'center', 
+                      color:'#9ca3af', 
+                      fontWeight:'bold', 
+                      fontSize:16, 
+                      margin:'8px 0',
+                      padding:'4px 0'
+                    }}>
+                      VS
+                    </div>
+
+                    {/* デッキ2 */}
+                    <div style={{ 
+                      display:'flex', 
+                      alignItems:'center', 
+                      gap:12, 
+                      padding:12, 
+                      borderRadius:8, 
+                      backgroundColor: winnerId===deck2?.id?'#d1fae5':'#f9fafb', 
+                      border: winnerId===deck2?.id?'2px solid #10b981':'1px solid #e5e7eb' 
+                    }}>
+                      {deck2?.imageUrl && (
+                        <img 
+                          src={deck2.imageUrl} 
+                          alt={deck2.name}
+                          style={{ 
+                            width:60, 
+                            height:60, 
+                            borderRadius:8, 
+                            objectFit:'cover', 
+                            border:'2px solid #ddd',
+                            flexShrink:0
+                          }}
+                        />
+                      )}
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:'bold', fontSize:16, marginBottom:4}}>
+                          {deck2 ? deck2.name : <span style={{ fontStyle:'italic', color:'#9ca3af' }}>シード待ち</span>}
+                        </div>
+                        {deck2 && deck2Stats && (
+                          <div style={{fontSize:12, color:'#666', display:'flex', gap:12, flexWrap:'wrap'}}>
+                            <span style={{backgroundColor:'#dbeafe', padding:'2px 6px', borderRadius:4}}>
+                              ⭐ {deck2Stats.rating}
+                            </span>
+                            <span style={{backgroundColor:'#dcfce7', padding:'2px 6px', borderRadius:4}}>
+                              🎯 {getWinRate(deck2.id)}%
+                            </span>
+                            <span style={{backgroundColor:'#fef3c7', padding:'2px 6px', borderRadius:4}}>
+                              🏆 {deck2Stats.wins}勝{deck2Stats.losses}敗
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      {winnerId===deck2?.id && <span style={{fontSize:28}}>🏆</span>}
+                    </div>
+
+                    {isBye && match.status === 'completed' && (
+                      <div style={{ 
+                        fontSize:12, 
+                        color:'#f59e0b', 
+                        marginTop:8, 
+                        textAlign:'center',
+                        fontWeight:'bold'
+                      }}>
+                        ※ 不戦勝で次回戦へ
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          )}
-        </div>
-        {winnerId===deck1?.id && <span style={{fontSize:28}}>🏆</span>}
-      </div>
-
-      <div style={{ 
-        textAlign:'center', 
-        color:'#9ca3af', 
-        fontWeight:'bold', 
-        fontSize:16, 
-        margin:'8px 0',
-        padding:'4px 0'
-      }}>
-        VS
-      </div>
-
-      {/* デッキ2 */}
-      <div style={{ 
-        display:'flex', 
-        alignItems:'center', 
-        gap:12, 
-        padding:12, 
-        borderRadius:8, 
-        backgroundColor: winnerId===deck2?.id?'#d1fae5':'#f9fafb', 
-        border: winnerId===deck2?.id?'2px solid #10b981':'1px solid #e5e7eb' 
-      }}>
-        {deck2?.imageUrl && (
-          <img 
-            src={deck2.imageUrl} 
-            alt={deck2.name}
-            style={{ 
-              width:60, 
-              height:60, 
-              borderRadius:8, 
-              objectFit:'cover', 
-              border:'2px solid #ddd',
-              flexShrink:0
-            }}
-          />
-        )}
-        <div style={{flex:1}}>
-          <div style={{fontWeight:'bold', fontSize:16, marginBottom:4}}>
-            {deck2 ? deck2.name : <span style={{ fontStyle:'italic', color:'#9ca3af' }}>シード待ち</span>}
           </div>
-          {deck2Stats && (
-            <div style={{fontSize:12, color:'#666', display:'flex', gap:12, flexWrap:'wrap'}}>
-              <span style={{backgroundColor:'#dbeafe', padding:'2px 6px', borderRadius:4}}>
-                ⭐ {deck2Stats.rating}
-              </span>
-              <span style={{backgroundColor:'#dcfce7', padding:'2px 6px', borderRadius:4}}>
-                🎯 {getWinRate(deck2.id)}%
-              </span>
-              <span style={{backgroundColor:'#fef3c7', padding:'2px 6px', borderRadius:4}}>
-                🏆 {deck2Stats.wins}勝{deck2Stats.losses}敗
-              </span>
-            </div>
-          )}
-        </div>
-        {winnerId===deck2?.id && <span style={{fontSize:28}}>🏆</span>}
+        ))}
       </div>
-
-      {isBye && match.status === 'completed' && (
-        <div style={{ 
-          fontSize:12, 
-          color:'#f59e0b', 
-          marginTop:8, 
-          textAlign:'center',
-          fontWeight:'bold'
-        }}>
-          ※ 不戦勝で次回戦へ
-        </div>
-      )}
-    </div>
-  );
-})}
 
       {/* 試合結果入力モーダル */}
       {selectedMatch && (
@@ -322,4 +326,3 @@ const TournamentDetail: React.FC<TournamentDetailProps> = ({
 };
 
 export default TournamentDetail;
-
