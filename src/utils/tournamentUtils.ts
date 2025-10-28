@@ -6,25 +6,25 @@ import { TournamentBracket, Round, Match, TournamentFormat } from '../types';
 export const generateBracket = (
   deckIds: string[],
   format: TournamentFormat
+  seed: number
 ): TournamentBracket => {
-  const uniqueDecks = [...new Set(deckIds)]; // 重複防止
   if (uniqueDecks.length < 2) {
     throw new Error('2デッキ以上必要です');
   }
 
   if (format === 'single') {
-    return generateSingleEliminationBracket(uniqueDecks);
+    return generateSingleEliminationBracket(deckIds, seed); // シード値を渡す
   } else {
-    return generateDoubleEliminationBracket(uniqueDecks);
+    return generateDoubleEliminationBracket(deckIds, seed); // シード値を渡す
   }
 };
 
 /**
  * シングルエリミネーションブラケット生成
  */
-const generateSingleEliminationBracket = (deckIds: string[]): TournamentBracket => {
+const generateSingleEliminationBracket = (deckIds: string[], seed: number): TournamentBracket => {
   const rounds: Round[] = [];
-  let currentRound = createFirstRound(deckIds);
+  let currentRound = createFirstRound(deckIds, seed);
   rounds.push(currentRound);
 
   // 決勝まで生成
@@ -74,12 +74,12 @@ const generateDoubleEliminationBracket = (deckIds: string[]): TournamentBracket 
 /**
  * 初戦を生成（ランダム組み合わせ & シード処理）
  */
-const createFirstRound = (deckIds: string[]): Round => {
+const createFirstRound = (deckIds: string[], seed: number): Round => {
   const matches: Match[] = [];
 
   // --- ランダムにシャッフル ---
-  const shuffled = [...deckIds].sort(() => Math.random() - 0.5);
-
+const shuffled = [...deckIds].sort(() => seedrandom(seed.toString())() - 0.5);
+  
   // --- 2のべき乗に調整（BYEを追加） ---
   const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(shuffled.length)));
   const byeCount = nextPowerOf2 - shuffled.length;
