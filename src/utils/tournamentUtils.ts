@@ -2,6 +2,18 @@ import { TournamentBracket, Round, Match, TournamentFormat } from '../types';
 import seedrandom from 'seedrandom';
 
 /**
+ * Fisher-Yatesシャッフル（正しいランダムシャッフル）
+ */
+const shuffleArray = <T,>(array: T[], rng: () => number): T[] => {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
+
+/**
  * トーナメントブラケット生成
  */
 export const generateBracket = (
@@ -9,6 +21,11 @@ export const generateBracket = (
   format: TournamentFormat,
   seed: number
 ): TournamentBracket => {
+  console.log('=== generateBracket 開始 ===');
+  console.log('入力デッキ数:', deckIds.length);
+  console.log('入力デッキID:', deckIds);
+  console.log('シード値:', seed);
+  
   if (deckIds.length < 2) {
     throw new Error('2デッキ以上必要です');
   }
@@ -32,6 +49,15 @@ const generateSingleEliminationBracket = (deckIds: string[], seed: number): Tour
     currentRound = createNextRound(currentRound);
     rounds.push(currentRound);
   }
+
+  console.log('=== 生成完了 ===');
+  console.log('ラウンド数:', rounds.length);
+  rounds.forEach((round, i) => {
+    console.log(`\n【${round.roundName}】 試合数: ${round.matches.length}`);
+    round.matches.forEach((match, j) => {
+      console.log(`  試合${j + 1}: ${match.deck1Id || 'null'} vs ${match.deck2Id || 'null'} (status: ${match.status}, winner: ${match.winnerId || 'null'})`);
+    });
+  });
 
   return { winnersBracket: rounds };
 };
@@ -66,38 +92,63 @@ const generateDoubleEliminationBracket = (deckIds: string[], seed: number): Tour
 };
 
 /**
- * 初戦生成（ランダム＋シード＋奇数デッキ対応）
+ * 初戦生成（正しいランダムシャッフル＋奇数デッキ対応）
  */
 const createFirstRound = (deckIds: string[], seed: number): Round => {
   const rng = seedrandom(seed.toString());
-  const shuffled = [...deckIds].sort(() => rng() - 0.5);
+  
+  // 正しいシャッフル（Fisher-Yates法）
+  const shuffled = shuffleArray(deckIds, rng);
+  
+  console.log('シャッフル後:', shuffled);
 
   const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(shuffled.length)));
   const byeCount = nextPowerOf2 - shuffled.length;
 
+  console.log('必要な枠数:', nextPowerOf2);
+  console.log('BYE数:', byeCount);
+
   // BYEを追加
+  const participants = [...shuffled];
   for (let i = 0; i < byeCount; i++) {
-    shuffled.push(`BYE-${i + 1}`);
+    participants.push(`BYE-${i + 1}`);
   }
 
   const matches: Match[] = [];
-  for (let i = 0; i < shuffled.length; i += 2) {
-    const deck1Id = shuffled[i];
-    const deck2Id = shuffled[i + 1] ?? null;
+  for (let i = 0; i < participants.length; i += 2) {
+    const deck1Id = participants[i];
+    const deck2Id = participants[i + 1];
 
-    const isBye = deck1Id.startsWith('BYE') || (deck2Id && deck2Id.startsWith('BYE'));
-    const realWinner =
-      deck1Id.startsWith('BYE') ? deck2Id : deck2Id && deck2Id.startsWith('BYE') ? deck1Id : null;
+    const deck1IsBye = deck1Id.startsWith('BYE');
+    const deck2IsBye = deck2Id?.startsWith('BYE');
+    
+    let finalDeck1: string | null = deck1IsBye ? null : deck1Id;
+    let finalDeck2: string | null = deck2IsBye ? null : deck2Id;
+    let winner: string | null = null;
+    let status: 'pending' | 'completed' = 'pending';
+
+    // BYEの場合は相手を勝者にして試合を完了
+    if (deck1IsBye && !deck2IsBye) {
+      finalDeck1 = deck2Id;
+      finalDeck2 = null;
+      winner = deck2Id;
+      status = 'completed';
+    } else if (deck2IsBye && !deck1IsBye) {
+      finalDeck1 = deck1Id;
+      finalDeck2 = null;
+      winner = deck1Id;
+      status = 'completed';
+    }
 
     matches.push({
       matchId: `r1-m${matches.length + 1}`,
-      deck1Id: deck1Id.startsWith('BYE') ? deck2Id : deck1Id,
-      deck2Id: deck2Id?.startsWith('BYE') ? null : deck2Id,
+      deck1Id: finalDeck1,
+      deck2Id: finalDeck2,
       deck1Wins: 0,
       deck2Wins: 0,
-      winnerId: realWinner,
+      winnerId: winner,
       loserId: null,
-      status: isBye ? 'completed' : 'pending',
+      status: status,
     });
   }
 
@@ -120,7 +171,7 @@ const createNextRound = (prevRound: Round): Round => {
     const deck1Winner = prevMatches[i * 2]?.winnerId ?? null;
     const deck2Winner = prevMatches[i * 2 + 1]?.winnerId ?? null;
 
-    const isBye = !deck2Winner && deck1Winner;
+    const isBye = deck1Winner && !deck2Winner;
     return {
       matchId: `r${roundNumber}-m${i + 1}`,
       deck1Id: deck1Winner ?? null,
