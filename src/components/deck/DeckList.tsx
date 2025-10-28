@@ -482,7 +482,8 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
   // トーナメント作成
   const handleTournamentCreate = async (tournamentData: Omit<Tournament, 'id' | 'createdAt' | 'status' | 'bracket'>) => {
     try {
-      const bracket = generateBracket(tournamentData.participantDeckIds, tournamentData.format);
+      const seed = Date.now(); // ランダムシード値を生成
+      const bracket = generateBracket(tournamentData.participantDeckIds, tournamentData.format, seed);
       
       const newTournament = {
         ...tournamentData,
