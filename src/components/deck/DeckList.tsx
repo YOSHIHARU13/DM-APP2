@@ -17,11 +17,11 @@ import DeckForm from './DeckForm';
 import BattleForm from '../battle/BattleForm';
 import DeckDetail from './DeckDetail';
 import Analysis from '../analysis/Analysis';
-import TournamentForm from 'components/tournament/TournamentForm';
-import TournamentList from 'components/tournament/TournamentList';
-import TournamentDetail from 'components/tournament/TournamentDetail';
+import TournamentForm from '../tournament/TournamentForm';
+import TournamentList from '../tournament/TournamentList';
+import TournamentDetail from '../tournament/TournamentDetail';
 
-import { generateBracket, updateBracketWithResult, getFinalRankings } from 'utils/tournamentUtils';
+import { generateBracket, updateBracketWithResult, getFinalRankings } from '../../utils/tournamentUtils';
 // Eloレーティング計算
 const calculateEloRating = (currentRating: number, opponentRating: number, isWin: boolean, kFactor: number = 32): number => {
   const expectedScore = 1 / (1 + Math.pow(10, (opponentRating - currentRating) / 400));
