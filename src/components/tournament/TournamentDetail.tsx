@@ -93,6 +93,7 @@ const TournamentDetail: React.FC<TournamentDetailProps> = ({
   };
 
   const handleMatchClick = (match: Match) => {
+    if (!match.deck1Id || !match.deck2Id) return; // BYEは入力不可
     setSelectedMatch(match);
     setSelectedWinner(null);
     setSelectedGoingFirst(null);
@@ -116,6 +117,7 @@ const TournamentDetail: React.FC<TournamentDetailProps> = ({
 
   return (
     <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto' }}>
+      {/* ヘッダー */}
       <div style={{ marginBottom: 30 }}>
         <button onClick={onBack} style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, marginBottom: 15, padding: '8px 0' }}>
           ← トーナメント一覧に戻る
@@ -146,6 +148,7 @@ const TournamentDetail: React.FC<TournamentDetailProps> = ({
                 const deck2 = getDeckById(match.deck2Id);
                 const stats1 = getDeckStats(match.deck1Id);
                 const stats2 = getDeckStats(match.deck2Id);
+
                 const canPlay = match.status === 'pending' && deck1 && deck2;
                 const isCompleted = match.status === 'completed';
                 const hasUpset = isCompleted && isUpset(match.winnerId, match.winnerId === match.deck1Id ? match.deck2Id : match.deck1Id);
@@ -222,7 +225,7 @@ const TournamentDetail: React.FC<TournamentDetailProps> = ({
                             </div>
                           </div>
                           <div style={{ flex: 1 }}>
-                                                        <div style={{ fontWeight: 'bold', fontSize: 15, color: '#1f2937' }}>{deck2.name}</div>
+                            <div style={{ fontWeight: 'bold', fontSize: 15, color: '#1f2937' }}>{deck2.name}</div>
                             <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>R:{stats2.rating} | {getWinRate(deck2.id)}% ({stats2.wins}-{stats2.losses})</div>
                           </div>
                           {match.winnerId === deck2.id && <span style={{ fontSize: 24 }}>🏆</span>}
@@ -344,4 +347,3 @@ const TournamentDetail: React.FC<TournamentDetailProps> = ({
 };
 
 export default TournamentDetail;
-
