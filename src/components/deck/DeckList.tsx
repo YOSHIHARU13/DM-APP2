@@ -462,8 +462,7 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
       const updatedBattles = [...battles, battleWithId];
       const newRatings = initializeDeckRatings(updatedBattles, decks);
       setDeckRatings(newRatings);
-      
-      setShowBattleForm(false);
+    
     } catch (error) {
       console.error('対戦結果の保存に失敗:', error);
       alert('対戦結果の保存に失敗しました');
