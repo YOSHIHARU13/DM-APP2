@@ -108,42 +108,36 @@ const createFirstRound = (deckIds: string[], seed: number): Round => {
   console.log('必要な枠数:', nextPowerOf2);
   console.log('BYE数:', byeCount);
 
-  // BYEを追加
-  const participants = [...shuffled];
-  for (let i = 0; i < byeCount; i++) {
-    participants.push(`BYE-${i + 1}`);
-  }
-
+  // 下位シードにBYEを均等配置
+  // 例: 9デッキ → [D1, D2, D3, D4, D5, null, null, null, null, null, null, null, null, null, null, null]
+  // ではなく、[D1, D2, D3, D4, D5, D6, D7, D8, D9] → 試合を作るときにnullを配置
+  
   const matches: Match[] = [];
-  for (let i = 0; i < participants.length; i += 2) {
-    const deck1Id = participants[i];
-    const deck2Id = participants[i + 1];
+  const matchCount = nextPowerOf2 / 2;
+  
+  for (let i = 0; i < matchCount; i++) {
+    const deck1Id = shuffled[i] || null;
+    const deck2Id = shuffled[matchCount + i] || null;
 
-    const deck1IsBye = deck1Id.startsWith('BYE');
-    const deck2IsBye = deck2Id?.startsWith('BYE');
-    
-    let finalDeck1: string | null = deck1IsBye ? null : deck1Id;
-    let finalDeck2: string | null = deck2IsBye ? null : deck2Id;
+    // 両方nullならスキップ（起こらないはずだが安全のため）
+    if (!deck1Id && !deck2Id) continue;
+
     let winner: string | null = null;
     let status: 'pending' | 'completed' = 'pending';
 
-    // BYEの場合は相手を勝者にして試合を完了
-    if (deck1IsBye && !deck2IsBye) {
-      finalDeck1 = deck2Id;
-      finalDeck2 = null;
-      winner = deck2Id;
-      status = 'completed';
-    } else if (deck2IsBye && !deck1IsBye) {
-      finalDeck1 = deck1Id;
-      finalDeck2 = null;
+    // どちらか一方がnullならBYE扱い
+    if (!deck2Id && deck1Id) {
       winner = deck1Id;
+      status = 'completed';
+    } else if (!deck1Id && deck2Id) {
+      winner = deck2Id;
       status = 'completed';
     }
 
     matches.push({
       matchId: `r1-m${matches.length + 1}`,
-      deck1Id: finalDeck1,
-      deck2Id: finalDeck2,
+      deck1Id: deck1Id,
+      deck2Id: deck2Id,
       deck1Wins: 0,
       deck2Wins: 0,
       winnerId: winner,
@@ -171,14 +165,16 @@ const createNextRound = (prevRound: Round): Round => {
     const deck1Winner = prevMatches[i * 2]?.winnerId ?? null;
     const deck2Winner = prevMatches[i * 2 + 1]?.winnerId ?? null;
 
-    const isBye = deck1Winner && !deck2Winner;
+    const isBye = (deck1Winner && !deck2Winner) || (!deck1Winner && deck2Winner);
+    const winner = deck1Winner || deck2Winner || null;
+    
     return {
       matchId: `r${roundNumber}-m${i + 1}`,
       deck1Id: deck1Winner ?? null,
       deck2Id: deck2Winner ?? null,
       deck1Wins: 0,
       deck2Wins: 0,
-      winnerId: isBye ? deck1Winner : null,
+      winnerId: isBye ? winner : null,
       loserId: null,
       status: isBye ? 'completed' : 'pending',
     };
