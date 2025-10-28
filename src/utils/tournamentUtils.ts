@@ -71,35 +71,57 @@ const generateDoubleEliminationBracket = (deckIds: string[]): TournamentBracket 
 /**
  * 初戦を生成（シード処理含む）
  */
+/**
+ * 初戦を生成（ランダム組み合わせ & シード処理）
+ */
 const createFirstRound = (deckIds: string[]): Round => {
   const matches: Match[] = [];
-  const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(deckIds.length)));
-  const byeCount = nextPowerOf2 - deckIds.length;
 
-  const allDecks = [...deckIds];
+  // --- ランダムにシャッフル ---
+  const shuffled = [...deckIds].sort(() => Math.random() - 0.5);
+
+  // --- 2のべき乗に調整（BYEを追加） ---
+  const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(shuffled.length)));
+  const byeCount = nextPowerOf2 - shuffled.length;
   for (let i = 0; i < byeCount; i++) {
-    allDecks.push(`BYE-${i}`);
+    shuffled.push(`BYE-${i + 1}`);
   }
 
-  for (let i = 0; i < allDecks.length; i += 2) {
-    const deck1Id = allDecks[i];
-    const deck2Id = allDecks[i + 1] ?? null;
+  // --- マッチ生成 ---
+  for (let i = 0; i < shuffled.length; i += 2) {
+    const deck1Id = shuffled[i];
+    const deck2Id = shuffled[i + 1] ?? null;
 
-    const isBye = deck1Id?.startsWith('BYE') || deck2Id?.startsWith('BYE');
+    const isBye =
+      (deck1Id && deck1Id.startsWith('BYE')) ||
+      (deck2Id && deck2Id.startsWith('BYE'));
+
+    const realWinner =
+      deck1Id && deck1Id.startsWith('BYE')
+        ? deck2Id
+        : deck2Id && deck2Id.startsWith('BYE')
+        ? deck1Id
+        : null;
+
     matches.push({
       matchId: `r1-m${matches.length + 1}`,
-      deck1Id: deck1Id.startsWith('BYE') ? deck2Id : deck1Id,
+      deck1Id: deck1Id?.startsWith('BYE') ? deck2Id : deck1Id,
       deck2Id: deck2Id?.startsWith('BYE') ? null : deck2Id,
       deck1Wins: 0,
       deck2Wins: 0,
-      winnerId: isBye ? (deck1Id.startsWith('BYE') ? deck2Id : deck1Id) : null,
+      winnerId: realWinner,
       loserId: null,
       status: isBye ? 'completed' : 'pending',
     });
   }
 
-  return { roundNumber: 1, roundName: '1回戦', matches };
+  return {
+    roundNumber: 1,
+    roundName: '1回戦',
+    matches,
+  };
 };
+
 
 /**
  * 次のラウンド生成
