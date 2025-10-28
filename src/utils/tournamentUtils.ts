@@ -79,13 +79,9 @@ const generateSingleEliminationBracket = (deckIds: string[], seed: number): Tour
       if (!deck2 && deck1) {
         winner = deck1;
         status = 'completed';
-        winners.push(deck1); // ← 修正：nullではなくdeck1を追加
       } else if (!deck1 && deck2) {
         winner = deck2;
         status = 'completed';
-        winners.push(deck2); // ← 修正：nullではなくdeck2を追加
-      } else {
-        winners.push(null); // ← 通常の試合は結果待ち
       }
       
       matches.push({
@@ -98,6 +94,9 @@ const generateSingleEliminationBracket = (deckIds: string[], seed: number): Tour
         loserId: null,
         status: status,
       });
+      
+      // 勝者を次のラウンドに追加
+      winners.push(winner);
     }
     
     rounds.push({
