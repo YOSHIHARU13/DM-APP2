@@ -45,7 +45,7 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
         totalWins: 0,
         totalLosses: 0,
         winRate: 0,
-        rating: 1500 // 初期レート
+        rating: 1500
       };
     });
 
@@ -328,15 +328,19 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
     onBattleAdd(newBattle);
 
     if (continuousMode) {
+      // 連続モード: 勝敗と先攻のみリセット
       setWinner('');
       setGoingFirst('');
       setMemo('');
+      // deck1Idとdeck2Idは保持
     } else {
+      // 通常モード: 全てリセットしてフォームを閉じる
       setDeck1Id('');
       setDeck2Id('');
       setWinner('');
       setGoingFirst('');
       setMemo('');
+      onCancel(); // フォームを閉じる
     }
   };
 
@@ -353,7 +357,6 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
     }
   };
 
-  // レートランクの取得
   const getRatingRank = (rating: number): string => {
     if (rating >= 2000) return 'S';
     if (rating >= 1800) return 'A';
