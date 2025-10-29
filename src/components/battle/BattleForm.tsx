@@ -12,6 +12,20 @@ interface MatchupSuggestion {
   winRate?: number;
 }
 
+interface DeckStats {
+  totalWins: number;
+  totalLosses: number;
+  winRate: number;
+  rating: number;
+}
+
+// Eloレーティング計算（DeckDetailと同じ式）
+const calculateEloRating = (currentRating: number, opponentRating: number, isWin: boolean, kFactor: number = 32): number => {
+  const expectedScore = 1 / (1 + Math.pow(10, (opponentRating - currentRating) / 400));
+  const actualScore = isWin ? 1 : 0;
+  return Math.round(currentRating + kFactor * (actualScore - expectedScore));
+};
+
 const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBattleAdd, onCancel }) => {
   const [deck1Id, setDeck1Id] = useState<string>('');
   const [deck2Id, setDeck2Id] = useState<string>('');
@@ -20,6 +34,68 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
   const [memo, setMemo] = useState<string>('');
   const [continuousMode, setContinuousMode] = useState<boolean>(false);
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
+
+  // デッキの全体統計を計算（Eloレーティングを使用）
+  const deckStatsMap = useMemo((): Record<string, DeckStats> => {
+    const stats: Record<string, DeckStats> = {};
+    
+    // 初期化
+    decks.forEach(deck => {
+      stats[deck.id] = {
+        totalWins: 0,
+        totalLosses: 0,
+        winRate: 0,
+        rating: 1500 // 初期レート
+      };
+    });
+
+    // 全デッキの初期レート設定
+    const allRatings: {[deckId: string]: number} = {};
+    decks.forEach(d => {
+      allRatings[d.id] = 1500;
+    });
+
+    if (battles && battles.length > 0) {
+      // 時系列順にソート
+      const sortedBattles = [...battles].sort((a, b) => {
+        const dateA = a.date instanceof Date ? a.date.getTime() : new Date(a.date).getTime();
+        const dateB = b.date instanceof Date ? b.date.getTime() : new Date(b.date).getTime();
+        return dateA - dateB;
+      });
+
+      // 時系列順にレートを更新
+      sortedBattles.forEach(battle => {
+        const deck1Rating = allRatings[battle.deck1Id] || 1500;
+        const deck2Rating = allRatings[battle.deck2Id] || 1500;
+        const deck1Won = (battle.deck1Wins || 0) > (battle.deck2Wins || 0);
+        
+        // Eloレーティングを更新
+        allRatings[battle.deck1Id] = calculateEloRating(deck1Rating, deck2Rating, deck1Won);
+        allRatings[battle.deck2Id] = calculateEloRating(deck2Rating, deck1Rating, !deck1Won);
+
+        // 勝敗カウント
+        if (stats[battle.deck1Id]) {
+          stats[battle.deck1Id].totalWins += battle.deck1Wins || 0;
+          stats[battle.deck1Id].totalLosses += battle.deck2Wins || 0;
+        }
+        if (stats[battle.deck2Id]) {
+          stats[battle.deck2Id].totalWins += battle.deck2Wins || 0;
+          stats[battle.deck2Id].totalLosses += battle.deck1Wins || 0;
+        }
+      });
+
+      // 最終レートと勝率を設定
+      Object.keys(stats).forEach(deckId => {
+        stats[deckId].rating = allRatings[deckId] || 1500;
+        const total = stats[deckId].totalWins + stats[deckId].totalLosses;
+        if (total > 0) {
+          stats[deckId].winRate = (stats[deckId].totalWins / total) * 100;
+        }
+      });
+    }
+
+    return stats;
+  }, [decks, battles]);
 
   // 対戦データの分析
   const matchupAnalysis = useMemo(() => {
@@ -69,25 +145,15 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
     return analysis;
   }, [decks, battles]);
 
-  // デッキ全体の勝率計算
-  const getDeckOverallWinRate = (deckId: string) => {
-    let wins = 0;
-    let losses = 0;
+  // 対面勝率の計算
+  const getMatchupWinRate = (deckId1: string, deckId2: string): number | null => {
+    const data = matchupAnalysis[deckId1]?.[deckId2];
+    if (!data || data.games === 0) return null;
     
-    if (battles) {
-      battles.forEach(battle => {
-        if (battle.deck1Id === deckId) {
-          wins += battle.deck1Wins || 0;
-          losses += battle.deck2Wins || 0;
-        } else if (battle.deck2Id === deckId) {
-          wins += battle.deck2Wins || 0;
-          losses += battle.deck1Wins || 0;
-        }
-      });
-    }
+    const total = data.wins + data.losses;
+    if (total === 0) return null;
     
-    const total = wins + losses;
-    return total > 0 ? (wins / total * 100).toFixed(1) : '0.0';
+    return (data.wins / total) * 100;
   };
 
   // おすすめ対戦の生成
@@ -170,7 +236,14 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
     }
   }, [deck1Id, deck2Id, matchupAnalysis]);
 
-  const getDeckById = (deckId: string) => decks.find(d => d.id === deckId);
+  const getDeckName = (deckId: string) => {
+    const deck = decks.find(d => d.id === deckId);
+    return deck ? deck.name : '不明';
+  };
+
+  const getDeck = (deckId: string) => {
+    return decks.find(d => d.id === deckId);
+  };
 
   const handleSuggestionClick = (suggestion: MatchupSuggestion) => {
     setDeck1Id(suggestion.deck1Id);
@@ -192,13 +265,21 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
         const selectedPair = topSuggestions[Math.floor(Math.random() * topSuggestions.length)];
         setDeck1Id(selectedPair.deck1Id);
         setDeck2Id(selectedPair.deck2Id);
+      } else {
+        const availableDecks = decks.filter(d => d.id !== deck2Id);
+        if (availableDecks.length > 0) {
+          const randomDeck = availableDecks[Math.floor(Math.random() * availableDecks.length)];
+          setDeck1Id(randomDeck.id);
+        }
       }
       return;
     }
 
     const availableDecks = type === 'deck1' 
       ? decks.filter(d => d.id !== deck2Id)
-      : decks.filter(d => d.id !== deck1Id);
+      : type === 'deck2'
+      ? decks.filter(d => d.id !== deck1Id)
+      : decks;
 
     if (availableDecks.length === 0) return;
 
@@ -247,18 +328,15 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
     onBattleAdd(newBattle);
 
     if (continuousMode) {
-      // 連続モード: 勝敗と先攻のみリセット（デッキは保持）
       setWinner('');
       setGoingFirst('');
       setMemo('');
     } else {
-      // 通常モード: 全てリセットしてフォーム閉じる
       setDeck1Id('');
       setDeck2Id('');
       setWinner('');
       setGoingFirst('');
       setMemo('');
-      onCancel();
     }
   };
 
@@ -275,51 +353,76 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
     }
   };
 
-  // 対戦カード情報（スパロボUI）
-  const deck1 = getDeckById(deck1Id);
-  const deck2 = getDeckById(deck2Id);
-  const matchupData1 = deck1Id && deck2Id ? matchupAnalysis[deck1Id]?.[deck2Id] : null;
-  const matchupData2 = deck1Id && deck2Id ? matchupAnalysis[deck2Id]?.[deck1Id] : null;
+  // レートランクの取得
+  const getRatingRank = (rating: number): string => {
+    if (rating >= 2000) return 'S';
+    if (rating >= 1800) return 'A';
+    if (rating >= 1600) return 'B';
+    if (rating >= 1400) return 'C';
+    return 'D';
+  };
+
+  const getRatingColor = (rating: number): string => {
+    if (rating >= 2000) return '#ff1744';
+    if (rating >= 1800) return '#ff9800';
+    if (rating >= 1600) return '#ffc107';
+    if (rating >= 1400) return '#4caf50';
+    return '#9e9e9e';
+  };
+
+  const deck1 = getDeck(deck1Id);
+  const deck2 = getDeck(deck2Id);
+  const deck1Stats = deck1Id ? deckStatsMap[deck1Id] : null;
+  const deck2Stats = deck2Id ? deckStatsMap[deck2Id] : null;
+  const matchupWinRate1 = deck1Id && deck2Id ? getMatchupWinRate(deck1Id, deck2Id) : null;
+  const matchupWinRate2 = deck1Id && deck2Id ? getMatchupWinRate(deck2Id, deck1Id) : null;
 
   return (
     <div style={{ 
       padding: '20px', 
-      backgroundColor: 'white', 
-      border: '1px solid #ddd', 
-      borderRadius: '8px',
-      maxWidth: '800px',
-      margin: '0 auto'
+      backgroundColor: '#1a1a2e', 
+      border: '2px solid #16213e', 
+      borderRadius: '12px',
+      maxWidth: '900px',
+      margin: '0 auto',
+      color: '#ffffff'
     }}>
-      <h2 style={{ marginBottom: '20px', fontSize: '20px' }}>対戦結果を入力</h2>
+      <h2 style={{ 
+        marginBottom: '20px', 
+        textAlign: 'center',
+        color: '#00d4ff',
+        textShadow: '0 0 10px #00d4ff',
+        fontSize: '24px'
+      }}>⚔️ BATTLE RECORD ⚔️</h2>
       
       {/* 連続入力モード切替 */}
-      <div style={{ marginBottom: '15px', padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
+      <div style={{ marginBottom: '15px', padding: '10px', backgroundColor: '#0f3460', borderRadius: '6px', border: '1px solid #16213e' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
           <input
             type="checkbox"
             checked={continuousMode}
             onChange={(e) => setContinuousMode(e.target.checked)}
           />
-          <span style={{ fontWeight: 'bold' }}>連続入力モード</span>
-          <span style={{ fontSize: '12px', color: '#666' }}>
-            （同じ対戦カードで連続入力）
+          <span style={{ fontWeight: 'bold', color: '#00d4ff' }}>連続入力モード</span>
+          <span style={{ fontSize: '12px', color: '#aaa' }}>
+            （デッキ選択を保持して連続入力）
           </span>
         </label>
       </div>
 
-      {/* おすすめ対戦 */}
+      {/* おすすめ対戦の表示 */}
       <div style={{ marginBottom: '20px' }}>
         <button 
           onClick={() => setShowSuggestions(!showSuggestions)}
           style={{ 
             width: '100%',
             padding: '12px', 
-            backgroundColor: '#17a2b8', 
+            backgroundColor: '#e94560', 
             color: 'white', 
             border: 'none', 
             borderRadius: '6px', 
             cursor: 'pointer',
-            fontSize: '14px',
+            fontSize: '16px',
             fontWeight: 'bold',
             display: 'flex',
             alignItems: 'center',
@@ -334,9 +437,10 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
         {showSuggestions && suggestions.length > 0 && (
           <div style={{ 
             marginTop: '10px', 
-            border: '1px solid #17a2b8', 
+            border: '1px solid #e94560', 
             borderRadius: '6px',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            backgroundColor: '#0f3460'
           }}>
             {suggestions.map((suggestion, index) => (
               <div 
@@ -344,22 +448,22 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
                 onClick={() => handleSuggestionClick(suggestion)}
                 style={{
                   padding: '12px',
-                  backgroundColor: index % 2 === 0 ? '#f8f9fa' : 'white',
+                  backgroundColor: index % 2 === 0 ? '#16213e' : '#0f3460',
                   cursor: 'pointer',
-                  borderBottom: index < suggestions.length - 1 ? '1px solid #dee2e6' : 'none',
+                  borderBottom: index < suggestions.length - 1 ? '1px solid #16213e' : 'none',
                   transition: 'background-color 0.2s'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e3f2fd'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = index % 2 === 0 ? '#f8f9fa' : 'white'}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1a4d6d'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = index % 2 === 0 ? '#16213e' : '#0f3460'}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ fontSize: '14px' }}>
+                  <div>
                     <strong>{suggestion.deck1Name}</strong> vs <strong>{suggestion.deck2Name}</strong>
                   </div>
                   <span style={{
                     padding: '4px 8px',
                     borderRadius: '12px',
-                    fontSize: '11px',
+                    fontSize: '12px',
                     backgroundColor: 
                       suggestion.reason === 'unplayed' ? '#ff9800' :
                       suggestion.reason === 'few_games' ? '#2196f3' :
@@ -369,13 +473,18 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
                     {getReasonText(suggestion.reason, suggestion.winRate)}
                   </span>
                 </div>
+                {suggestion.totalGames > 0 && (
+                  <div style={{ fontSize: '12px', color: '#aaa', marginTop: '4px' }}>
+                    対戦数: {suggestion.totalGames}回
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* ランダム選択ボタン */}
+      {/* ランダム選択ボタン群 */}
       <div style={{ 
         display: 'grid', 
         gridTemplateColumns: '1fr 1fr', 
@@ -385,13 +494,13 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
         <button 
           onClick={() => handleRandomSelect('all')}
           style={{ 
-            padding: '8px', 
+            padding: '10px', 
             backgroundColor: '#6f42c1', 
             color: 'white', 
             border: 'none', 
             borderRadius: '4px', 
             cursor: 'pointer',
-            fontSize: '13px'
+            fontSize: '14px'
           }}
         >
           🎲 おすすめからランダム
@@ -399,24 +508,36 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
         <button 
           onClick={() => handleRandomSelect('suggested')}
           style={{ 
-            padding: '8px', 
+            padding: '10px', 
             backgroundColor: '#20c997', 
             color: 'white', 
             border: 'none', 
             borderRadius: '4px', 
             cursor: 'pointer',
-            fontSize: '13px'
+            fontSize: '14px'
           }}
         >
           ⭐ トップ3からランダム
         </button>
       </div>
 
-      {/* デッキ選択 */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
-        <div>
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', fontSize: '14px' }}>
-            デッキ1:
+      {/* スパロボ風デッキ選択エリア */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: '1fr auto 1fr', 
+        gap: '20px', 
+        marginBottom: '20px',
+        alignItems: 'center'
+      }}>
+        {/* デッキ1 */}
+        <div style={{
+          backgroundColor: '#0f3460',
+          border: deck1Id ? '2px solid #00d4ff' : '2px solid #16213e',
+          borderRadius: '8px',
+          padding: '15px'
+        }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#00d4ff' }}>
+            DECK 1
           </label>
           <select 
             value={deck1Id} 
@@ -425,8 +546,10 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
               width: '100%', 
               padding: '8px', 
               marginBottom: '8px',
-              fontSize: '13px',
-              border: '1px solid #ddd',
+              fontSize: '14px',
+              backgroundColor: '#16213e',
+              color: '#fff',
+              border: '1px solid #00d4ff',
               borderRadius: '4px'
             }}
           >
@@ -442,21 +565,159 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
             style={{ 
               width: '100%',
               padding: '6px', 
-              backgroundColor: '#17a2b8', 
+              backgroundColor: '#533483', 
               color: 'white', 
               border: 'none', 
               borderRadius: '4px', 
               cursor: 'pointer',
-              fontSize: '12px'
+              fontSize: '12px',
+              marginBottom: '10px'
             }}
           >
             🎲 ランダム
           </button>
+
+          {/* デッキ1の情報表示 */}
+          {deck1 && deck1Stats && (
+            <div style={{ marginTop: '10px', fontSize: '13px' }}>
+              {/* デッキ画像 */}
+              {deck1.imageUrl && (
+                <div style={{ 
+                  width: '100%', 
+                  height: '120px', 
+                  backgroundColor: '#16213e',
+                  borderRadius: '6px',
+                  marginBottom: '10px',
+                  overflow: 'hidden',
+                  border: '1px solid #00d4ff'
+                }}>
+                  <img 
+                    src={deck1.imageUrl} 
+                    alt={deck1.name}
+                    style={{ 
+                      width: '100%', 
+                      height: '100%', 
+                      objectFit: 'cover'
+                    }}
+                  />
+                </div>
+              )}
+              
+              {/* レート */}
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                marginBottom: '8px',
+                padding: '6px',
+                backgroundColor: '#16213e',
+                borderRadius: '4px'
+              }}>
+                <span style={{ color: '#aaa' }}>RATE:</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ 
+                    fontWeight: 'bold',
+                    fontSize: '16px',
+                    color: getRatingColor(deck1Stats.rating)
+                  }}>
+                    {getRatingRank(deck1Stats.rating)}
+                  </span>
+                  <span style={{ color: '#00d4ff', fontWeight: 'bold' }}>
+                    {deck1Stats.rating.toFixed(0)}
+                  </span>
+                </div>
+              </div>
+
+              {/* 全体勝率 */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between',
+                marginBottom: '6px',
+                padding: '6px',
+                backgroundColor: '#16213e',
+                borderRadius: '4px'
+              }}>
+                <span style={{ color: '#aaa' }}>全体勝率:</span>
+                <span style={{ 
+                  color: deck1Stats.winRate >= 50 ? '#4caf50' : '#f44336',
+                  fontWeight: 'bold'
+                }}>
+                  {deck1Stats.winRate.toFixed(1)}%
+                </span>
+              </div>
+
+              {/* 全体戦績 */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between',
+                marginBottom: '6px',
+                padding: '6px',
+                backgroundColor: '#16213e',
+                borderRadius: '4px'
+              }}>
+                <span style={{ color: '#aaa' }}>全体戦績:</span>
+                <span style={{ color: '#fff' }}>
+                  {deck1Stats.totalWins}勝 {deck1Stats.totalLosses}敗
+                </span>
+              </div>
+
+              {/* 対面勝率 */}
+              {deck2Id && matchupWinRate1 !== null && (
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between',
+                  padding: '6px',
+                  backgroundColor: '#1a4d6d',
+                  borderRadius: '4px',
+                  border: '1px solid #00d4ff'
+                }}>
+                  <span style={{ color: '#00d4ff' }}>vs {deck2?.name}:</span>
+                  <span style={{ 
+                    color: matchupWinRate1 >= 50 ? '#4caf50' : '#f44336',
+                    fontWeight: 'bold'
+                  }}>
+                    {matchupWinRate1.toFixed(1)}%
+                  </span>
+                </div>
+              )}
+
+              {deck2Id && matchupWinRate1 === null && (
+                <div style={{ 
+                  padding: '6px',
+                  backgroundColor: '#1a4d6d',
+                  borderRadius: '4px',
+                  border: '1px solid #ff9800',
+                  textAlign: 'center',
+                  color: '#ff9800',
+                  fontSize: '12px'
+                }}>
+                  未対戦
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        <div>
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', fontSize: '14px' }}>
-            デッキ2:
+        {/* VS表示 */}
+        <div style={{ 
+          fontSize: '48px', 
+          fontWeight: 'bold',
+          color: '#e94560',
+          textShadow: '0 0 20px #e94560',
+          textAlign: 'center'
+        }}>
+          VS
+        </div>
+
+        {/* デッキ2 */}
+        <div style={{
+          backgroundColor: '#0f3460',
+          border: deck2Id ? '2px solid #e94560' : '2px solid #16213e',
+          borderRadius: '8px',
+          padding: '15px'
+        }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#e94560' }}>
+            DECK 2
           </label>
           <select 
             value={deck2Id} 
@@ -465,8 +726,10 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
               width: '100%', 
               padding: '8px', 
               marginBottom: '8px',
-              fontSize: '13px',
-              border: '1px solid #ddd',
+              fontSize: '14px',
+              backgroundColor: '#16213e',
+              color: '#fff',
+              border: '1px solid #e94560',
               borderRadius: '4px'
             }}
           >
@@ -482,171 +745,167 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
             style={{ 
               width: '100%',
               padding: '6px', 
-              backgroundColor: '#17a2b8', 
+              backgroundColor: '#533483', 
               color: 'white', 
               border: 'none', 
               borderRadius: '4px', 
               cursor: 'pointer',
-              fontSize: '12px'
+              fontSize: '12px',
+              marginBottom: '10px'
             }}
           >
             🎲 ランダム
           </button>
-        </div>
-      </div>
 
-      {/* スパロボ風対戦カード */}
-      {deck1 && deck2 && (
-        <div style={{ 
-          marginBottom: '20px',
-          border: '2px solid #007bff',
-          borderRadius: '12px',
-          padding: '16px',
-          backgroundColor: '#f8f9fa'
-        }}>
-          <div style={{ 
-            display: 'grid',
-            gridTemplateColumns: '1fr auto 1fr',
-            gap: '15px',
-            alignItems: 'center'
-          }}>
-            {/* デッキ1 */}
-            <div style={{ 
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '8px'
-            }}>
-              {deck1.imageUrl && (
-                <img 
-                  src={deck1.imageUrl} 
-                  alt={deck1.name}
-                  style={{ 
-                    width: 80, 
-                    height: 80, 
-                    borderRadius: '8px',
-                    objectFit: 'cover',
-                    border: '3px solid #007bff'
-                  }}
-                />
-              )}
-              <div style={{ fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>
-                {deck1.name}
-              </div>
-              <div style={{ fontSize: '11px', color: '#666' }}>
-                {deck1.colors.join(', ')}
-              </div>
-              <div style={{ 
-                backgroundColor: '#dbeafe',
-                padding: '6px 12px',
-                borderRadius: '6px',
-                fontSize: '12px'
-              }}>
-                <div style={{ fontWeight: 'bold' }}>全体勝率: {getDeckOverallWinRate(deck1.id)}%</div>
-                {matchupData1 && matchupData1.games > 0 && (
-                  <div style={{ marginTop: '4px' }}>
-                    対面勝率: {((matchupData1.wins / (matchupData1.wins + matchupData1.losses)) * 100).toFixed(1)}%
-                    <div style={{ fontSize: '10px', color: '#666' }}>
-                      ({matchupData1.wins}勝{matchupData1.losses}敗)
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* VS */}
-            <div style={{ 
-              fontSize: '24px',
-              fontWeight: 'bold',
-              color: '#dc3545',
-              textAlign: 'center'
-            }}>
-              VS
-            </div>
-
-            {/* デッキ2 */}
-            <div style={{ 
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '8px'
-            }}>
+          {/* デッキ2の情報表示 */}
+          {deck2 && deck2Stats && (
+            <div style={{ marginTop: '10px', fontSize: '13px' }}>
+              {/* デッキ画像 */}
               {deck2.imageUrl && (
-                <img 
-                  src={deck2.imageUrl} 
-                  alt={deck2.name}
-                  style={{ 
-                    width: 80, 
-                    height: 80, 
-                    borderRadius: '8px',
-                    objectFit: 'cover',
-                    border: '3px solid #dc3545'
-                  }}
-                />
+                <div style={{ 
+                  width: '100%', 
+                  height: '120px', 
+                  backgroundColor: '#16213e',
+                  borderRadius: '6px',
+                  marginBottom: '10px',
+                  overflow: 'hidden',
+                  border: '1px solid #e94560'
+                }}>
+                  <img 
+                    src={deck2.imageUrl} 
+                    alt={deck2.name}
+                    style={{ 
+                      width: '100%', 
+                      height: '100%', 
+                      objectFit: 'cover'
+                    }}
+                  />
+                </div>
               )}
-              <div style={{ fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>
-                {deck2.name}
-              </div>
-              <div style={{ fontSize: '11px', color: '#666' }}>
-                {deck2.colors.join(', ')}
-              </div>
+              
+              {/* レート */}
               <div style={{ 
-                backgroundColor: '#fce7f3',
-                padding: '6px 12px',
-                borderRadius: '6px',
-                fontSize: '12px'
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                marginBottom: '8px',
+                padding: '6px',
+                backgroundColor: '#16213e',
+                borderRadius: '4px'
               }}>
-                <div style={{ fontWeight: 'bold' }}>全体勝率: {getDeckOverallWinRate(deck2.id)}%</div>
-                {matchupData2 && matchupData2.games > 0 && (
-                  <div style={{ marginTop: '4px' }}>
-                    対面勝率: {((matchupData2.wins / (matchupData2.wins + matchupData2.losses)) * 100).toFixed(1)}%
-                    <div style={{ fontSize: '10px', color: '#666' }}>
-                      ({matchupData2.wins}勝{matchupData2.losses}敗)
-                    </div>
-                  </div>
-                )}
+                <span style={{ color: '#aaa' }}>RATE:</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ 
+                    fontWeight: 'bold',
+                    fontSize: '16px',
+                    color: getRatingColor(deck2Stats.rating)
+                  }}>
+                    {getRatingRank(deck2Stats.rating)}
+                  </span>
+                  <span style={{ color: '#e94560', fontWeight: 'bold' }}>
+                    {deck2Stats.rating.toFixed(0)}
+                  </span>
+                </div>
               </div>
-            </div>
-          </div>
 
-          {/* 対戦情報 */}
-          {matchupData1 && matchupData1.games > 0 && (
-            <div style={{ 
-              marginTop: '12px',
-              padding: '8px',
-              backgroundColor: 'white',
-              borderRadius: '6px',
-              fontSize: '11px',
-              textAlign: 'center',
-              color: '#666'
-            }}>
-              対戦回数: {matchupData1.games}回 | 
-              先行回数: {deck1.name}={matchupData1.goingFirstCount}回 / {deck2.name}={matchupData2?.goingFirstCount || 0}回
+              {/* 全体勝率 */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between',
+                marginBottom: '6px',
+                padding: '6px',
+                backgroundColor: '#16213e',
+                borderRadius: '4px'
+              }}>
+                <span style={{ color: '#aaa' }}>全体勝率:</span>
+                <span style={{ 
+                  color: deck2Stats.winRate >= 50 ? '#4caf50' : '#f44336',
+                  fontWeight: 'bold'
+                }}>
+                  {deck2Stats.winRate.toFixed(1)}%
+                </span>
+              </div>
+
+              {/* 全体戦績 */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between',
+                marginBottom: '6px',
+                padding: '6px',
+                backgroundColor: '#16213e',
+                borderRadius: '4px'
+              }}>
+                <span style={{ color: '#aaa' }}>全体戦績:</span>
+                <span style={{ color: '#fff' }}>
+                  {deck2Stats.totalWins}勝 {deck2Stats.totalLosses}敗
+                </span>
+              </div>
+
+              {/* 対面勝率 */}
+              {deck1Id && matchupWinRate2 !== null && (
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between',
+                  padding: '6px',
+                  backgroundColor: '#4d1a3a',
+                  borderRadius: '4px',
+                  border: '1px solid #e94560'
+                }}>
+                  <span style={{ color: '#e94560' }}>vs {deck1?.name}:</span>
+                  <span style={{ 
+                    color: matchupWinRate2 >= 50 ? '#4caf50' : '#f44336',
+                    fontWeight: 'bold'
+                  }}>
+                    {matchupWinRate2.toFixed(1)}%
+                  </span>
+                </div>
+              )}
+
+              {deck1Id && matchupWinRate2 === null && (
+                <div style={{ 
+                  padding: '6px',
+                  backgroundColor: '#4d1a3a',
+                  borderRadius: '4px',
+                  border: '1px solid #ff9800',
+                  textAlign: 'center',
+                  color: '#ff9800',
+                  fontSize: '12px'
+                }}>
+                  未対戦
+                </div>
+              )}
             </div>
           )}
         </div>
-      )}
+      </div>
 
+      {/* 勝敗・先攻選択エリア */}
       {deck1Id && deck2Id && (
-        <>
+        <div style={{ 
+          backgroundColor: '#0f3460', 
+          padding: '20px', 
+          borderRadius: '8px',
+          border: '2px solid #16213e',
+          marginBottom: '20px'
+        }}>
           {/* 勝者選択 */}
           <div style={{ marginBottom: '15px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', fontSize: '14px' }}>
-              勝者:
+            <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold', color: '#00d4ff' }}>
+              🏆 WINNER
             </label>
             <div style={{ display: 'flex', gap: '10px' }}>
               <label style={{ 
                 display: 'flex', 
                 alignItems: 'center', 
+                justifyContent: 'center',
                 gap: '8px',
-                padding: '10px 15px',
-                border: `2px solid ${winner === 'deck1' ? '#28a745' : '#ddd'}`,
+                padding: '15px',
+                border: `3px solid ${winner === 'deck1' ? '#00d4ff' : '#16213e'}`,
                 borderRadius: '8px',
-                backgroundColor: winner === 'deck1' ? '#d4edda' : 'white',
+                backgroundColor: winner === 'deck1' ? '#1a4d6d' : '#16213e',
                 cursor: 'pointer',
                 flex: 1,
-                justifyContent: 'center',
-                fontSize: '14px'
+                fontWeight: 'bold'
               }}>
                 <input
                   type="radio"
@@ -654,21 +913,21 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
                   checked={winner === 'deck1'}
                   onChange={() => setWinner('deck1')}
                 />
-                <strong>{deck1?.name}</strong>
+                {getDeckName(deck1Id)}
               </label>
               
               <label style={{ 
                 display: 'flex', 
                 alignItems: 'center', 
+                justifyContent: 'center',
                 gap: '8px',
-                padding: '10px 15px',
-                border: `2px solid ${winner === 'deck2' ? '#28a745' : '#ddd'}`,
+                padding: '15px',
+                border: `3px solid ${winner === 'deck2' ? '#e94560' : '#16213e'}`,
                 borderRadius: '8px',
-                backgroundColor: winner === 'deck2' ? '#d4edda' : 'white',
+                backgroundColor: winner === 'deck2' ? '#4d1a3a' : '#16213e',
                 cursor: 'pointer',
                 flex: 1,
-                justifyContent: 'center',
-                fontSize: '14px'
+                fontWeight: 'bold'
               }}>
                 <input
                   type="radio"
@@ -676,23 +935,23 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
                   checked={winner === 'deck2'}
                   onChange={() => setWinner('deck2')}
                 />
-                <strong>{deck2?.name}</strong>
+                {getDeckName(deck2Id)}
               </label>
             </div>
           </div>
 
           {/* 先攻選択 */}
           <div style={{ marginBottom: '15px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', fontSize: '14px' }}>
-              先攻:
+            <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold', color: '#ffc107' }}>
+              ⚡ FIRST ATTACK
               {goingFirst && (
                 <span style={{ 
                   marginLeft: '8px', 
-                  fontSize: '11px', 
-                  color: '#17a2b8',
+                  fontSize: '12px', 
+                  color: '#aaa',
                   fontWeight: 'normal'
                 }}>
-                  （自動選択）
+                  （自動選択されました）
                 </span>
               )}
             </label>
@@ -700,15 +959,15 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
               <label style={{ 
                 display: 'flex', 
                 alignItems: 'center', 
+                justifyContent: 'center',
                 gap: '8px',
-                padding: '10px 15px',
-                border: `2px solid ${goingFirst === 'deck1' ? '#007bff' : '#ddd'}`,
+                padding: '15px',
+                border: `3px solid ${goingFirst === 'deck1' ? '#ffc107' : '#16213e'}`,
                 borderRadius: '8px',
-                backgroundColor: goingFirst === 'deck1' ? '#cce7ff' : 'white',
+                backgroundColor: goingFirst === 'deck1' ? '#4d3b00' : '#16213e',
                 cursor: 'pointer',
                 flex: 1,
-                justifyContent: 'center',
-                fontSize: '14px'
+                fontWeight: 'bold'
               }}>
                 <input
                   type="radio"
@@ -716,21 +975,21 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
                   checked={goingFirst === 'deck1'}
                   onChange={() => setGoingFirst('deck1')}
                 />
-                {deck1?.name}
+                {getDeckName(deck1Id)}
               </label>
               
               <label style={{ 
                 display: 'flex', 
                 alignItems: 'center', 
+                justifyContent: 'center',
                 gap: '8px',
-                padding: '10px 15px',
-                border: `2px solid ${goingFirst === 'deck2' ? '#007bff' : '#ddd'}`,
+                padding: '15px',
+                border: `3px solid ${goingFirst === 'deck2' ? '#ffc107' : '#16213e'}`,
                 borderRadius: '8px',
-                backgroundColor: goingFirst === 'deck2' ? '#cce7ff' : 'white',
+                backgroundColor: goingFirst === 'deck2' ? '#4d3b00' : '#16213e',
                 cursor: 'pointer',
                 flex: 1,
-                justifyContent: 'center',
-                fontSize: '14px'
+                fontWeight: 'bold'
               }}>
                 <input
                   type="radio"
@@ -738,7 +997,7 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
                   checked={goingFirst === 'deck2'}
                   onChange={() => setGoingFirst('deck2')}
                 />
-                {deck2?.name}
+                {getDeckName(deck2Id)}
               </label>
             </div>
           </div>
@@ -746,28 +1005,34 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
           {/* 結果プレビュー */}
           {winner && goingFirst && (
             <div style={{ 
-              padding: '12px', 
-              backgroundColor: '#e3f2fd', 
-              borderRadius: '6px', 
-              marginBottom: '15px',
+              padding: '15px', 
+              backgroundColor: '#1a4d6d', 
+              borderRadius: '8px',
               textAlign: 'center',
-              border: '1px solid #90caf9',
-              fontSize: '14px'
+              border: '2px solid #00d4ff'
             }}>
-              <strong>
-                🏆 {winner === 'deck1' ? deck1?.name : deck2?.name} の勝利
-              </strong>
-              <div style={{ fontSize: '13px', marginTop: '4px', color: '#555' }}>
-                先攻: {goingFirst === 'deck1' ? deck1?.name : deck2?.name}
+              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#00d4ff', marginBottom: '8px' }}>
+                ⚔️ BATTLE RESULT ⚔️
+              </div>
+              <div style={{ fontSize: '16px', marginBottom: '5px' }}>
+                <span style={{ color: '#4caf50' }}>🏆 WINNER:</span>{' '}
+                <strong style={{ color: '#fff' }}>
+                  {getDeckName(winner === 'deck1' ? deck1Id : deck2Id)}
+                </strong>
+              </div>
+              <div style={{ fontSize: '14px', color: '#aaa' }}>
+                <span style={{ color: '#ffc107' }}>⚡ FIRST:</span>{' '}
+                {getDeckName(goingFirst === 'deck1' ? deck1Id : deck2Id)}
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
       
+      {/* メモ入力 */}
       <div style={{ marginBottom: '15px' }}>
-        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '14px' }}>
-          メモ (省略可):
+        <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', color: '#00d4ff' }}>
+          📝 MEMO (省略可):
         </label>
         <textarea
           value={memo}
@@ -775,58 +1040,64 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
           placeholder="対戦の感想、特記事項など"
           style={{ 
             width: '100%', 
-            padding: '8px', 
-            height: '60px', 
-            fontSize: '13px', 
-            border: '1px solid #ddd', 
-            borderRadius: '4px', 
+            padding: '10px', 
+            height: '70px', 
+            fontSize: '14px', 
+            backgroundColor: '#16213e',
+            color: '#fff',
+            border: '1px solid #0f3460', 
+            borderRadius: '6px', 
             resize: 'vertical' 
           }}
         />
       </div>
       
+      {/* アクションボタン */}
       <div style={{ display: 'flex', gap: '10px' }}>
         <button 
           onClick={handleSubmit} 
           disabled={!deck1Id || !deck2Id || !winner || !goingFirst}
           style={{ 
-            padding: '12px 20px', 
-            backgroundColor: (!deck1Id || !deck2Id || !winner || !goingFirst) ? '#6c757d' : '#28a745', 
+            padding: '15px 20px', 
+            backgroundColor: (!deck1Id || !deck2Id || !winner || !goingFirst) ? '#6c757d' : '#4caf50', 
             color: 'white', 
             border: 'none', 
-            borderRadius: '4px', 
+            borderRadius: '6px', 
             cursor: (!deck1Id || !deck2Id || !winner || !goingFirst) ? 'not-allowed' : 'pointer',
             flex: 1,
-            fontSize: '15px',
-            fontWeight: 'bold'
+            fontSize: '16px',
+            fontWeight: 'bold',
+            boxShadow: (!deck1Id || !deck2Id || !winner || !goingFirst) ? 'none' : '0 0 15px #4caf50'
           }}
         >
-          {continuousMode ? '登録して次へ' : '登録'}
+          {continuousMode ? '✅ 登録して次へ' : '✅ 登録'}
         </button>
         <button 
           onClick={onCancel}
           style={{ 
-            padding: '12px 20px', 
+            padding: '15px 20px', 
             backgroundColor: '#6c757d', 
             color: 'white', 
             border: 'none', 
-            borderRadius: '4px', 
+            borderRadius: '6px', 
             cursor: 'pointer',
-            fontSize: '15px'
+            fontSize: '16px',
+            fontWeight: 'bold'
           }}
         >
-          {continuousMode ? '完了' : 'キャンセル'}
+          {continuousMode ? '🚪 完了' : '❌ キャンセル'}
         </button>
       </div>
 
       {continuousMode && (
         <div style={{ 
           marginTop: '10px', 
-          padding: '8px', 
-          backgroundColor: '#fff3cd', 
-          borderRadius: '4px', 
-          fontSize: '12px',
-          color: '#856404'
+          padding: '10px', 
+          backgroundColor: '#4d3b00', 
+          borderRadius: '6px', 
+          fontSize: '13px',
+          color: '#ffc107',
+          border: '1px solid #ffc107'
         }}>
           💡 連続入力モード：登録後もデッキ選択を保持し、勝敗・先攻のみリセットされます
         </div>
