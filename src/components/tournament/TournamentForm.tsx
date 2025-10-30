@@ -103,61 +103,32 @@ const TournamentForm: React.FC<TournamentFormProps> = ({
         />
       </div>
 
-      {/* 形式選択 */}
+      {/* 形式選択 - シングルエリミネーションのみ */}
       <div style={{ marginBottom: '20px' }}>
         <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
           トーナメント形式:
         </label>
-        <div style={{ display: 'flex', gap: '15px' }}>
-          <label style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '8px',
-            padding: '12px 20px',
-            border: `2px solid ${format === 'single' ? '#007bff' : '#ddd'}`,
-            borderRadius: '8px',
-            backgroundColor: format === 'single' ? '#e7f3ff' : 'white',
-            cursor: 'pointer',
-            flex: 1
-          }}>
-            <input
-              type="radio"
-              name="format"
-              checked={format === 'single'}
-              onChange={() => setFormat('single')}
-            />
-            <div>
-              <div style={{ fontWeight: 'bold' }}>シングルエリミネーション</div>
-              <div style={{ fontSize: '12px', color: '#666' }}>
-                1回負けたら終了（約17試合）
-              </div>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '8px',
+          padding: '12px 20px',
+          border: '2px solid #007bff',
+          borderRadius: '8px',
+          backgroundColor: '#e7f3ff'
+        }}>
+          <input
+            type="radio"
+            name="format"
+            checked={true}
+            readOnly
+          />
+          <div>
+            <div style={{ fontWeight: 'bold' }}>シングルエリミネーション</div>
+            <div style={{ fontSize: '12px', color: '#666' }}>
+              1回負けたら終了（勝ち抜き方式）
             </div>
-          </label>
-          
-          <label style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '8px',
-            padding: '12px 20px',
-            border: `2px solid ${format === 'double' ? '#007bff' : '#ddd'}`,
-            borderRadius: '8px',
-            backgroundColor: format === 'double' ? '#e7f3ff' : 'white',
-            cursor: 'pointer',
-            flex: 1
-          }}>
-            <input
-              type="radio"
-              name="format"
-              checked={format === 'double'}
-              onChange={() => setFormat('double')}
-            />
-            <div>
-              <div style={{ fontWeight: 'bold' }}>ダブルエリミネーション</div>
-              <div style={{ fontSize: '12px', color: '#666' }}>
-                敗者復活あり（約30試合）
-              </div>
-            </div>
-          </label>
+          </div>
         </div>
       </div>
 
@@ -306,12 +277,7 @@ const TournamentForm: React.FC<TournamentFormProps> = ({
         <ul style={{ margin: '5px 0 0 20px', paddingLeft: '0' }}>
           <li>参加デッキ数が2のべき乗でない場合、自動的にシードが設定されます</li>
           <li>シード順はランダムに決定されます</li>
-          {format === 'single' && (
-            <li>決勝の前に3位決定戦が行われます</li>
-          )}
-          {format === 'double' && (
-            <li>グランドファイナルは1試合のみで決着します</li>
-          )}
+          <li>準決勝の敗者が3位となります</li>
         </ul>
       </div>
       
