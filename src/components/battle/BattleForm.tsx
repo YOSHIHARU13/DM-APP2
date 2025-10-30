@@ -328,11 +328,11 @@ const BattleForm: React.FC<BattleFormProps> = ({ projectId, decks, battles, onBa
     onBattleAdd(newBattle);
 
     if (continuousMode) {
-      // 連続モード: 勝敗と先攻のみリセット
+      // 連続モード: 勝敗と先攻のみリセット（デッキは保持）
       setWinner('');
       setGoingFirst('');
       setMemo('');
-      // deck1Idとdeck2Idは保持
+      // deck1Idとdeck2Idは保持されるので、フォームは開いたまま
     } else {
       // 通常モード: 全てリセットしてフォームを閉じる
       setDeck1Id('');
