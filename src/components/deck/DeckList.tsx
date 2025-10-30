@@ -415,9 +415,8 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
     }
   };
 
-  // 対戦追加
-// 対戦追加（連続モード対応）
-  const handleBattleAdd = async (newBattle: Omit<Battle, 'id'>, continuousMode: boolean = false) => {    
+  // 対戦追加（連続モード対応）
+  const handleBattleAdd = async (newBattle: Omit<Battle, 'id'>, continuousMode: boolean = false) => {
     try {
       const battleData = {
         deck1Id: newBattle.deck1Id,
@@ -429,8 +428,6 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
         memo: newBattle.memo,
         date: newBattle.date,
         projectId: newBattle.projectId
-        if (!continuousMode) {  // ← 連続モードでない時のみ閉じる
-        setShowBattleForm(false);
       };
 
       const docRef = await addDoc(collection(db, 'battles'), battleData);
@@ -466,7 +463,10 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
       const newRatings = initializeDeckRatings(updatedBattles, decks);
       setDeckRatings(newRatings);
       
-      setShowBattleForm(false);
+      // 連続モードでない時のみフォームを閉じる
+      if (!continuousMode) {
+        setShowBattleForm(false);
+      }
     } catch (error) {
       console.error('対戦結果の保存に失敗:', error);
       alert('対戦結果の保存に失敗しました');
