@@ -416,7 +416,8 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
   };
 
   // 対戦追加
-  const handleBattleAdd = async (newBattle: Omit<Battle, 'id'>) => {
+// 対戦追加（連続モード対応）
+  const handleBattleAdd = async (newBattle: Omit<Battle, 'id'>, continuousMode: boolean = false) => {    
     try {
       const battleData = {
         deck1Id: newBattle.deck1Id,
@@ -428,6 +429,8 @@ const DeckList: React.FC<DeckListProps> = ({ project, onBackToProject }) => {
         memo: newBattle.memo,
         date: newBattle.date,
         projectId: newBattle.projectId
+        if (!continuousMode) {  // ← 連続モードでない時のみ閉じる
+        setShowBattleForm(false);
       };
 
       const docRef = await addDoc(collection(db, 'battles'), battleData);
