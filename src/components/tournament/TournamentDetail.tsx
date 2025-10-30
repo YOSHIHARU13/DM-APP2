@@ -115,7 +115,7 @@ const TournamentDetail: React.FC<TournamentDetailProps> = ({
         <div>
           <h2>{tournament.name}</h2>
           <div style={{ fontSize:14, color:'#6b7280', marginTop:4 }}>
-            {tournament.format==='single'?'シングルエリミネーション':'ダブルエリミネーション'} • {tournament.matchType==='best_of_1'?'1本勝負':'3本中2本先取'} • {tournament.participantDeckIds.length}デッキ参加
+            シングルエリミネーション • {tournament.matchType==='best_of_1'?'1本勝負':'3本中2本先取'} • {tournament.participantDeckIds.length}デッキ参加
           </div>
         </div>
         <div style={{ padding:'10px 20px', borderRadius:20, fontWeight:'bold', backgroundColor:tournament.status==='completed'?'#d1fae5':'#dbeafe', color:tournament.status==='completed'?'#065f46':'#1e40af' }}>

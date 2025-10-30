@@ -1,4 +1,4 @@
-import { TournamentBracket, Round, Match, TournamentFormat } from '../types';
+import { TournamentBracket, Round, Match } from '../types';
 import seedrandom from 'seedrandom';
 
 /**
@@ -14,11 +14,11 @@ const shuffleArray = <T,>(array: T[], rng: () => number): T[] => {
 };
 
 /**
- * トーナメントブラケット生成
+ * トーナメントブラケット生成（シングルエリミネーションのみ）
  */
 export const generateBracket = (
   deckIds: string[],
-  format: TournamentFormat,
+  format: 'single' | 'double',
   seed: number
 ): TournamentBracket => {
   console.log('=== generateBracket 開始 ===');
@@ -29,11 +29,12 @@ export const generateBracket = (
     throw new Error('2デッキ以上必要です');
   }
 
+  // フォーマットに関わらずシングルエリミネーションのみ生成
   return generateSingleEliminationBracket(deckIds, seed);
 };
 
 /**
- * シングルエリミネーション生成（正しいシード処理）
+ * シングルエリミネーション生成
  */
 const generateSingleEliminationBracket = (deckIds: string[], seed: number): TournamentBracket => {
   const rng = seedrandom(seed.toString());

@@ -65,12 +65,12 @@ export interface Battle {
   tournamentId?: string;  // トーナメント戦かどうかを判別
 }
 
-// トーナメント情報の型
+// トーナメント情報の型（シングルエリミネーションのみ）
 export interface Tournament {
   id: string;
   projectId: string;
   name: string;
-  format: 'single' | 'double';
+  format: 'single';  // 'double' を削除
   matchType: 'best_of_1' | 'best_of_3';
   participantDeckIds: string[];
   status: 'setup' | 'in_progress' | 'completed';
@@ -82,18 +82,16 @@ export interface Tournament {
   bracket: TournamentBracket;
 }
 
-// トーナメント関連の型定義
-export type TournamentFormat = 'single' | 'double';
+// トーナメント関連の型定義（シングルエリミネーションのみ）
+export type TournamentFormat = 'single';  // 'double' を削除
 export type MatchType = 'best_of_1' | 'best_of_3';
 export type MatchStatus = 'pending' | 'in_progress' | 'completed';
 export type TournamentStatus = 'setup' | 'in_progress' | 'completed';
 
-// トーナメントブラケット構造
+// トーナメントブラケット構造（シングルエリミネーションのみ）
 export interface TournamentBracket {
   winnersBracket: Round[];
-  losersBracket?: Round[];
-  thirdPlaceMatch?: Match;
-  grandFinal?: Match;
+  // losersBracket, thirdPlaceMatch, grandFinal を削除
 }
 
 // ラウンド情報
